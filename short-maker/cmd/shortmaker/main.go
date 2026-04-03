@@ -10,6 +10,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/west-garden/short-maker/internal/agent"
 	"github.com/west-garden/short-maker/internal/domain"
+	"github.com/west-garden/short-maker/internal/llm"
+	"github.com/west-garden/short-maker/internal/store"
 )
 
 var rootCmd = &cobra.Command{
@@ -30,20 +32,19 @@ var runCmd = &cobra.Command{
 
 		styleName, _ := cmd.Flags().GetString("style")
 		episodes, _ := cmd.Flags().GetInt("episodes")
+		useMock, _ := cmd.Flags().GetBool("mock")
+		llmModel, _ := cmd.Flags().GetString("model")
+		dbPath, _ := cmd.Flags().GetString("db")
 
 		style := domain.Style(styleName)
 		project := domain.NewProject(scriptPath, style, episodes)
 		state := agent.NewPipelineState(project, string(script))
 
-		// Build mock agents for now — real agents come in Plan 2-4
-		agents := map[agent.Phase]agent.Agent{}
-		for _, phase := range agent.DefaultFlow {
-			p := phase
-			agents[p] = agent.NewMockAgent(p, func(ctx context.Context, s *agent.PipelineState) (*agent.PipelineState, error) {
-				log.Printf("  [mock-%s] processing...", p)
-				return s, nil
-			})
+		agents, cleanup, err := buildAgents(useMock, llmModel, dbPath)
+		if err != nil {
+			return err
 		}
+		defer cleanup()
 
 		checkpoint := func(phase agent.Phase, s *agent.PipelineState) error {
 			log.Printf("  [checkpoint] phase %s completed", phase)
@@ -56,14 +57,88 @@ var runCmd = &cobra.Command{
 			return fmt.Errorf("pipeline failed: %w", err)
 		}
 
-		log.Printf("Pipeline completed for project: %s (errors: %d)", result.Project.Name, len(result.Errors))
+		printSummary(result)
 		return nil
 	},
+}
+
+func buildAgents(useMock bool, llmModel, dbPath string) (map[agent.Phase]agent.Agent, func(), error) {
+	agents := map[agent.Phase]agent.Agent{}
+	cleanup := func() {}
+
+	if useMock {
+		// All mock agents
+		for _, phase := range agent.DefaultFlow {
+			p := phase
+			agents[p] = agent.NewMockAgent(p, func(ctx context.Context, s *agent.PipelineState) (*agent.PipelineState, error) {
+				log.Printf("  [mock-%s] processing...", p)
+				return s, nil
+			})
+		}
+		return agents, cleanup, nil
+	}
+
+	// Real agents for story understanding and character management
+	apiKey := os.Getenv("OPENAI_API_KEY")
+	if apiKey == "" {
+		return nil, nil, fmt.Errorf("OPENAI_API_KEY environment variable is required when --mock=false")
+	}
+	baseURL := os.Getenv("OPENAI_BASE_URL")
+
+	llmClient := llm.NewOpenAIClient(apiKey, baseURL)
+
+	var st store.Store
+	if dbPath != "" {
+		sqliteStore, err := store.NewSQLiteStore(dbPath)
+		if err != nil {
+			return nil, nil, fmt.Errorf("open database: %w", err)
+		}
+		st = sqliteStore
+		cleanup = func() { sqliteStore.Close() }
+	}
+
+	agents[agent.PhaseStoryUnderstanding] = agent.NewStoryAgent(llmClient, llmModel)
+	agents[agent.PhaseCharacterAsset] = agent.NewCharacterAgent(llmClient, llmModel, st)
+
+	// Remaining phases still use mocks — real implementations come in Plan 3-4
+	for _, phase := range agent.DefaultFlow {
+		if _, ok := agents[phase]; !ok {
+			p := phase
+			agents[p] = agent.NewMockAgent(p, func(ctx context.Context, s *agent.PipelineState) (*agent.PipelineState, error) {
+				log.Printf("  [mock-%s] processing...", p)
+				return s, nil
+			})
+		}
+	}
+
+	return agents, cleanup, nil
+}
+
+func printSummary(result *agent.PipelineState) {
+	log.Printf("=== Pipeline Complete ===")
+	log.Printf("Project: %s", result.Project.Name)
+	if result.Blueprint != nil {
+		log.Printf("World: %s", result.Blueprint.WorldView)
+		log.Printf("Characters: %d", len(result.Blueprint.Characters))
+		for _, ch := range result.Blueprint.Characters {
+			log.Printf("  - %s: %s", ch.Name, ch.Description)
+		}
+		log.Printf("Episodes: %d", len(result.Blueprint.Episodes))
+	}
+	log.Printf("Assets: %d", len(result.Assets))
+	for _, a := range result.Assets {
+		log.Printf("  - [%s] %s", a.Type, a.Name)
+	}
+	log.Printf("Storyboard shots: %d", len(result.Storyboard))
+	log.Printf("Errors: %d", len(result.Errors))
 }
 
 func init() {
 	runCmd.Flags().String("style", "manga", "Content style: manga, 3d, live_action")
 	runCmd.Flags().Int("episodes", 10, "Number of episodes")
+	runCmd.Flags().Bool("mock", true, "Use mock agents (set false for real LLM calls)")
+	runCmd.Flags().String("model", "gpt-4o-mini", "LLM model name")
+	runCmd.Flags().String("db", "", "SQLite database path (optional, enables persistence)")
 	rootCmd.AddCommand(runCmd)
 }
 
