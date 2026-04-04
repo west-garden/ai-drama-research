@@ -2,7 +2,7 @@
 
 llm:
   provider: openai
-  api_key: ${OPENAI_API_KEY}       # or paste key directly
+  api_key: ""                      # set your key here, or use OPENAI_API_KEY env var
   base_url: https://api.openai.com/v1
   model: gpt-4o-mini
 

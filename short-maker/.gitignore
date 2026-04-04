@@ -7,6 +7,9 @@
 *.sqlite
 output/
 
+# Config (contains API keys)
+config.yaml
+
 # IDE
 .idea/
 .vscode/
