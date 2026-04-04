@@ -11,6 +11,8 @@ import (
 	"github.com/west-garden/short-maker/internal/agent"
 	"github.com/west-garden/short-maker/internal/domain"
 	"github.com/west-garden/short-maker/internal/llm"
+	"github.com/west-garden/short-maker/internal/quality"
+	"github.com/west-garden/short-maker/internal/router"
 	"github.com/west-garden/short-maker/internal/store"
 	"github.com/west-garden/short-maker/internal/strategy"
 )
@@ -37,12 +39,13 @@ var runCmd = &cobra.Command{
 		llmModel, _ := cmd.Flags().GetString("model")
 		dbPath, _ := cmd.Flags().GetString("db")
 		strategyPath, _ := cmd.Flags().GetString("strategies")
+		outputDir, _ := cmd.Flags().GetString("output")
 
 		style := domain.Style(styleName)
 		project := domain.NewProject(scriptPath, style, episodes)
 		state := agent.NewPipelineState(project, string(script))
 
-		agents, cleanup, err := buildAgents(useMock, llmModel, dbPath, strategyPath)
+		agents, cleanup, err := buildAgents(useMock, llmModel, dbPath, strategyPath, outputDir)
 		if err != nil {
 			return err
 		}
@@ -64,7 +67,7 @@ var runCmd = &cobra.Command{
 	},
 }
 
-func buildAgents(useMock bool, llmModel, dbPath, strategyPath string) (map[agent.Phase]agent.Agent, func(), error) {
+func buildAgents(useMock bool, llmModel, dbPath, strategyPath, outputDir string) (map[agent.Phase]agent.Agent, func(), error) {
 	agents := map[agent.Phase]agent.Agent{}
 	cleanup := func() {}
 
@@ -113,16 +116,14 @@ func buildAgents(useMock bool, llmModel, dbPath, strategyPath string) (map[agent
 		agents[agent.PhaseStoryboard] = agent.NewStoryboardAgent(llmClient, llmModel, nil)
 	}
 
-	// Remaining phases still use mocks — real implementations come in Plan 4+
-	for _, phase := range agent.DefaultFlow {
-		if _, ok := agents[phase]; !ok {
-			p := phase
-			agents[p] = agent.NewMockAgent(p, func(ctx context.Context, s *agent.PipelineState) (*agent.PipelineState, error) {
-				log.Printf("  [mock-%s] processing...", p)
-				return s, nil
-			})
-		}
-	}
+	// Image and video generation agents with model router
+	imageAdapter := router.NewMockImageAdapter()
+	videoAdapter := router.NewMockVideoAdapter()
+	modelRouter := router.NewModelRouter(imageAdapter, videoAdapter)
+	checker := quality.NewMockChecker()
+
+	agents[agent.PhaseImageGeneration] = agent.NewImageGenAgent(modelRouter, checker, outputDir)
+	agents[agent.PhaseVideoGeneration] = agent.NewVideoGenAgent(modelRouter, checker, outputDir)
 
 	return agents, cleanup, nil
 }
@@ -143,6 +144,14 @@ func printSummary(result *agent.PipelineState) {
 		log.Printf("  - [%s] %s", a.Type, a.Name)
 	}
 	log.Printf("Storyboard shots: %d", len(result.Storyboard))
+	log.Printf("Generated images: %d", len(result.Images))
+	for _, img := range result.Images {
+		log.Printf("  - ep%02d/shot%03d [%s] score:%d %s", img.EpisodeNum, img.ShotNumber, img.Grade, img.ImageScore, img.ImagePath)
+	}
+	log.Printf("Generated videos: %d", len(result.Videos))
+	for _, vid := range result.Videos {
+		log.Printf("  - ep%02d/shot%03d [%s] score:%d %s", vid.EpisodeNum, vid.ShotNumber, vid.Grade, vid.VideoScore, vid.VideoPath)
+	}
 	log.Printf("Errors: %d", len(result.Errors))
 }
 
@@ -153,6 +162,7 @@ func init() {
 	runCmd.Flags().String("model", "gpt-4o-mini", "LLM model name")
 	runCmd.Flags().String("db", "", "SQLite database path (optional, enables persistence)")
 	runCmd.Flags().String("strategies", "", "Path to strategies JSON file (enables real storyboard agent)")
+	runCmd.Flags().String("output", "./output", "Output directory for generated files")
 	rootCmd.AddCommand(runCmd)
 }
 
