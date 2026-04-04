@@ -39,7 +39,20 @@ type PipelineState struct {
 	Blueprint  *domain.StoryBlueprint `json:"blueprint,omitempty"`
 	Assets     []*domain.Asset        `json:"assets,omitempty"`
 	Storyboard []*domain.ShotSpec     `json:"storyboard,omitempty"`
+	Images     []*GeneratedShot       `json:"images,omitempty"`
+	Videos     []*GeneratedShot       `json:"videos,omitempty"`
 	Errors     []string               `json:"errors,omitempty"`
+}
+
+// GeneratedShot tracks the output of image and video generation for one shot.
+type GeneratedShot struct {
+	ShotNumber int          `json:"shot_number"`
+	EpisodeNum int          `json:"episode_number"`
+	ImagePath  string       `json:"image_path"`
+	VideoPath  string       `json:"video_path"`
+	Grade      domain.Grade `json:"grade"`
+	ImageScore int          `json:"image_score"`
+	VideoScore int          `json:"video_score"`
 }
 
 func NewPipelineState(project *domain.Project, script string) *PipelineState {
