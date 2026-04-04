@@ -20,7 +20,12 @@
 ├── insights/               # 调研洞察与思考
 │   ├── patterns.md             # 共性模式总结
 │   ├── gaps.md                 # 市场空白与机会
-│   └── architecture-ideas.md   # 对自建系统的架构启发
+│   ├── architecture-ideas.md   # 对自建系统的架构启发
+│   ├── quality-benchmark.md    # 质量基准体系（7 维度评分 + 各工具评分对比）
+│   ├── reflections.md          # 调研总体反思（市场判断 + 差异化方向）
+│   ├── arcreel-comparison.md   # ArcReel 开源项目对比（vs short-maker，7 个借鉴点）
+│   ├── evolution-loop.md       # 数据驱动的自进化机制（确定性 Pipeline + 可进化参数）
+│   └── script-sourcing.md      # 剧本获取策略（7 种路径 + 海外换皮方法论）
 └── README.md
 ```
 
@@ -36,3 +41,4 @@
 6. **可编程性** — 是否有 API、是否可集成到自动化流水线
 7. **定价** — 成本结构
 8. **局限性** — 做不到什么
+9. **质量基准评分** — 按 [统一基准体系](insights/quality-benchmark.md) 的 7 个维度打分（角色一致性、画面质量、动态运镜、叙事节奏、音频、技术完成度、商业可用性）
