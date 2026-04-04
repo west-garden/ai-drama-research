@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/west-garden/short-maker/internal/agent"
+	"github.com/west-garden/short-maker/internal/api"
 	"github.com/west-garden/short-maker/internal/domain"
 	"github.com/west-garden/short-maker/internal/llm"
 	"github.com/west-garden/short-maker/internal/quality"
@@ -64,6 +65,42 @@ var runCmd = &cobra.Command{
 
 		printSummary(result)
 		return nil
+	},
+}
+
+var serveCmd = &cobra.Command{
+	Use:   "serve",
+	Short: "Start the web console server",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		port, _ := cmd.Flags().GetInt("port")
+		outputDir, _ := cmd.Flags().GetString("output")
+		dbPath, _ := cmd.Flags().GetString("db")
+		useMock, _ := cmd.Flags().GetBool("mock")
+		llmModel, _ := cmd.Flags().GetString("model")
+		strategyPath, _ := cmd.Flags().GetString("strategies")
+
+		if dbPath == "" {
+			dbPath = "./shortmaker.db"
+		}
+
+		agents, cleanup, err := buildAgents(useMock, llmModel, dbPath, strategyPath, outputDir)
+		if err != nil {
+			return err
+		}
+		defer cleanup()
+
+		st, err := store.NewSQLiteStore(dbPath)
+		if err != nil {
+			return fmt.Errorf("open database: %w", err)
+		}
+		defer st.Close()
+
+		// Mark any previously running pipelines as failed
+		st.RecoverRunningPipelines(context.Background())
+
+		srv := api.NewServer(agents, st, outputDir)
+		log.Printf("Starting web console at http://localhost:%d", port)
+		return srv.Start(port)
 	},
 }
 
@@ -164,6 +201,14 @@ func init() {
 	runCmd.Flags().String("strategies", "", "Path to strategies JSON file (enables real storyboard agent)")
 	runCmd.Flags().String("output", "./output", "Output directory for generated files")
 	rootCmd.AddCommand(runCmd)
+
+	serveCmd.Flags().Int("port", 8080, "HTTP server port")
+	serveCmd.Flags().String("output", "./output", "Output directory for generated files")
+	serveCmd.Flags().String("db", "./shortmaker.db", "SQLite database path")
+	serveCmd.Flags().Bool("mock", true, "Use mock agents")
+	serveCmd.Flags().String("model", "gpt-4o-mini", "LLM model name")
+	serveCmd.Flags().String("strategies", "", "Path to strategies JSON file")
+	rootCmd.AddCommand(serveCmd)
 }
 
 func main() {
