@@ -8,6 +8,7 @@ import (
 	"github.com/west-garden/short-maker/internal/domain"
 	"github.com/west-garden/short-maker/internal/llm"
 	"github.com/west-garden/short-maker/internal/store"
+	"github.com/west-garden/short-maker/internal/strategy"
 )
 
 func TestIntegration_FullPipelineWithMockAgents(t *testing.T) {
@@ -256,4 +257,164 @@ func (m *sequentialMockClient) Chat(ctx context.Context, req llm.Request) (*llm.
 	resp := m.responses[m.index]
 	m.index++
 	return &llm.Response{Content: resp, TokensUsed: len(resp), Model: req.Model}, nil
+}
+
+func TestIntegration_FullPipelineWithStoryboardAgent(t *testing.T) {
+	storyJSON := `{
+		"world_view": "古代仙侠世界",
+		"characters": [
+			{
+				"name": "李逍遥",
+				"description": "天资聪颖的少年侠客",
+				"traits": ["正义", "热血"]
+			},
+			{
+				"name": "赵灵儿",
+				"description": "苗族圣女",
+				"traits": ["温柔", "善良"]
+			}
+		],
+		"episodes": [
+			{
+				"number": 1,
+				"role": "hook",
+				"emotion_arc": "好奇→震撼",
+				"synopsis": "邂逅于仙灵岛",
+				"scenes": [
+					{
+						"narrative_beat": "开场",
+						"emotion_arc": "平静→好奇",
+						"setting": "仙灵岛",
+						"pacing": "medium",
+						"character_count": 2
+					}
+				]
+			}
+		],
+		"relationships": [{"character_a": "李逍遥", "character_b": "赵灵儿", "type": "恋人"}]
+	}`
+
+	characterJSON := `{
+		"visual_prompt": "少年侠客形象",
+		"appearance": {
+			"face": "剑眉星目",
+			"body": "身材修长",
+			"clothing": "蓝色长袍",
+			"distinctive_features": ["配剑"]
+		}
+	}`
+
+	storyboardJSON := `{
+		"shots": [
+			{
+				"strategy_id": "strat_002",
+				"frame_type": "extreme_wide",
+				"composition": "center",
+				"camera_move": "pan",
+				"emotion": "壮阔",
+				"prompt": "manga style, extreme wide shot of mystical island",
+				"character_names": [],
+				"scene_ref": "仙灵岛",
+				"rhythm_position": "open_hook",
+				"content_type": "empty"
+			},
+			{
+				"strategy_id": "strat_001",
+				"frame_type": "close_up",
+				"composition": "center",
+				"camera_move": "zoom_in",
+				"emotion": "惊喜",
+				"prompt": "manga style, close-up of young swordsman meeting maiden",
+				"character_names": ["李逍遥", "赵灵儿"],
+				"scene_ref": "仙灵岛",
+				"rhythm_position": "emotion_peak",
+				"content_type": "first_appear"
+			}
+		]
+	}`
+
+	// Story call → Character call 1 → Character call 2 → Storyboard call
+	customMock := &sequentialMockClient{
+		responses: []string{storyJSON, characterJSON, characterJSON, storyboardJSON},
+	}
+
+	tmpDir := t.TempDir()
+	testStore, err := store.NewSQLiteStore(tmpDir + "/test.db")
+	if err != nil {
+		t.Fatalf("create store: %v", err)
+	}
+	defer testStore.Close()
+
+	strategyJSON := `[
+		{"id":"strat_001","name":"悬念特写","tags":{"narrative_beat":["冲突"],"emotion_arc":["紧张"],"pacing":["fast"],"character_count":[1,2]},"shot_formula":{"frame_type":"close_up","composition":"center","camera_move":"zoom_in","duration":"short"},"examples":[],"weight":1.0},
+		{"id":"strat_002","name":"全景建立","tags":{"narrative_beat":["开场"],"emotion_arc":["平静"],"pacing":["slow","medium"],"character_count":[0,1,2]},"shot_formula":{"frame_type":"extreme_wide","composition":"center","camera_move":"pan","duration":"long"},"examples":[],"weight":1.0}
+	]`
+	repo, _ := strategy.LoadFromJSON([]byte(strategyJSON))
+
+	agents := map[Phase]Agent{
+		PhaseStoryUnderstanding: NewStoryAgent(customMock, "test-model"),
+		PhaseCharacterAsset:     NewCharacterAgent(customMock, "test-model", testStore),
+		PhaseStoryboard:         NewStoryboardAgent(customMock, "test-model", repo),
+		PhaseImageGeneration: NewMockAgent(PhaseImageGeneration, func(ctx context.Context, s *PipelineState) (*PipelineState, error) {
+			return s, nil
+		}),
+		PhaseVideoGeneration: NewMockAgent(PhaseVideoGeneration, func(ctx context.Context, s *PipelineState) (*PipelineState, error) {
+			return s, nil
+		}),
+	}
+
+	orch := NewOrchestrator(agents, nil)
+	project := domain.NewProject("仙剑奇侠传", domain.StyleManga, 1)
+	state := NewPipelineState(project, "第一集：仙灵岛")
+
+	result, err := orch.Run(context.Background(), state)
+	if err != nil {
+		t.Fatalf("pipeline: %v", err)
+	}
+
+	// Verify all three real agents produced output
+	if result.Blueprint == nil {
+		t.Fatal("expected Blueprint from StoryAgent")
+	}
+	if len(result.Assets) != 2 {
+		t.Fatalf("expected 2 assets from CharacterAgent, got %d", len(result.Assets))
+	}
+	if len(result.Storyboard) != 2 {
+		t.Fatalf("expected 2 shots from StoryboardAgent, got %d", len(result.Storyboard))
+	}
+
+	// Verify storyboard shot annotations
+	shot1 := result.Storyboard[0]
+	if shot1.RhythmPosition != domain.RhythmOpenHook {
+		t.Errorf("expected rhythm open_hook, got %s", shot1.RhythmPosition)
+	}
+	if shot1.ContentType != domain.ContentEmpty {
+		t.Errorf("expected content empty, got %s", shot1.ContentType)
+	}
+
+	shot2 := result.Storyboard[1]
+	if shot2.ContentType != domain.ContentFirstAppear {
+		t.Errorf("expected content first_appear, got %s", shot2.ContentType)
+	}
+	// Character refs should be resolved to IDs (not names)
+	if len(shot2.CharacterRefs) != 2 {
+		t.Fatalf("expected 2 character refs, got %d", len(shot2.CharacterRefs))
+	}
+	// Refs should be IDs (start with "char_"), not names
+	for _, ref := range shot2.CharacterRefs {
+		if len(ref) < 5 {
+			t.Errorf("character ref '%s' looks like a name, not an ID", ref)
+		}
+	}
+
+	// Verify importance scoring works on the annotations
+	importance := domain.NewImportanceScore(
+		result.Blueprint.Episodes[0].Role, // hook
+		shot1.RhythmPosition,              // open_hook
+		shot1.ContentType,                 // empty
+	)
+	// hook(1.5) × open_hook(1.4) × empty(0.8) = 1.68 → Grade A
+	if importance.Grade() != domain.GradeA {
+		t.Errorf("expected grade A for hook/open_hook/empty, got %s (score: %.2f)", importance.Grade(), importance.Score())
+	}
 }
