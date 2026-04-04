@@ -82,3 +82,24 @@ func TestRepository_LoadInvalidJSON(t *testing.T) {
 		t.Error("expected error for invalid JSON")
 	}
 }
+
+func TestRepository_LoadSeedData(t *testing.T) {
+	repo, err := LoadFromFile("../../data/strategies.json")
+	if err != nil {
+		t.Fatalf("LoadFromFile: %v", err)
+	}
+	if len(repo.All()) < 10 {
+		t.Errorf("expected at least 10 seed strategies, got %d", len(repo.All()))
+	}
+	for _, s := range repo.All() {
+		if s.ID == "" {
+			t.Error("strategy missing ID")
+		}
+		if s.Name == "" {
+			t.Error("strategy missing Name")
+		}
+		if s.Weight <= 0 {
+			t.Errorf("strategy %s has non-positive weight: %f", s.ID, s.Weight)
+		}
+	}
+}

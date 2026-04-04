@@ -1,0 +1,182 @@
+[
+  {
+    "id": "strat_001",
+    "name": "悬念特写",
+    "tags": {
+      "narrative_beat": ["冲突", "反转", "悬念"],
+      "emotion_arc": ["紧张", "震惊", "恐惧"],
+      "pacing": ["fast"],
+      "character_count": [1, 2]
+    },
+    "shot_formula": {
+      "frame_type": "close_up",
+      "composition": "center",
+      "camera_move": "zoom_in",
+      "duration": "short"
+    },
+    "examples": ["角色发现真相的震惊特写", "关键道具被发现的近距离镜头"],
+    "weight": 1.0
+  },
+  {
+    "id": "strat_002",
+    "name": "全景建立",
+    "tags": {
+      "narrative_beat": ["开场", "转场", "环境"],
+      "emotion_arc": ["平静", "期待", "壮阔"],
+      "pacing": ["slow", "medium"],
+      "character_count": [0, 1, 2, 3]
+    },
+    "shot_formula": {
+      "frame_type": "extreme_wide",
+      "composition": "center",
+      "camera_move": "pan",
+      "duration": "long"
+    },
+    "examples": ["远景展示宏大场景", "故事发生地的全貌"],
+    "weight": 1.0
+  },
+  {
+    "id": "strat_003",
+    "name": "对峙中景",
+    "tags": {
+      "narrative_beat": ["冲突", "对峙", "谈判"],
+      "emotion_arc": ["紧张", "对抗", "压迫"],
+      "pacing": ["medium", "fast"],
+      "character_count": [2]
+    },
+    "shot_formula": {
+      "frame_type": "medium",
+      "composition": "rule_of_thirds",
+      "camera_move": "static",
+      "duration": "medium"
+    },
+    "examples": ["两人面对面紧张对话", "师徒之间的分歧"],
+    "weight": 1.0
+  },
+  {
+    "id": "strat_004",
+    "name": "动作追踪",
+    "tags": {
+      "narrative_beat": ["打斗", "追逐", "动作"],
+      "emotion_arc": ["激动", "紧张", "兴奋"],
+      "pacing": ["fast"],
+      "character_count": [1, 2, 3]
+    },
+    "shot_formula": {
+      "frame_type": "medium",
+      "composition": "rule_of_thirds",
+      "camera_move": "tracking",
+      "duration": "short"
+    },
+    "examples": ["角色奔跑或飞行的追踪镜头", "打斗中的动态跟拍"],
+    "weight": 1.0
+  },
+  {
+    "id": "strat_005",
+    "name": "情感特写",
+    "tags": {
+      "narrative_beat": ["告白", "离别", "感动", "回忆"],
+      "emotion_arc": ["悲伤", "温暖", "感动", "释放"],
+      "pacing": ["slow"],
+      "character_count": [1, 2]
+    },
+    "shot_formula": {
+      "frame_type": "close_up",
+      "composition": "center",
+      "camera_move": "static",
+      "duration": "medium"
+    },
+    "examples": ["角色流泪的面部特写", "深情对视"],
+    "weight": 1.0
+  },
+  {
+    "id": "strat_006",
+    "name": "肩上镜头",
+    "tags": {
+      "narrative_beat": ["对话", "日常", "交流"],
+      "emotion_arc": ["平静", "好奇", "温暖"],
+      "pacing": ["medium", "slow"],
+      "character_count": [2]
+    },
+    "shot_formula": {
+      "frame_type": "medium",
+      "composition": "over_shoulder",
+      "camera_move": "static",
+      "duration": "medium"
+    },
+    "examples": ["日常对话的经典过肩镜头", "两人交谈的正反打"],
+    "weight": 1.0
+  },
+  {
+    "id": "strat_007",
+    "name": "仰拍震撼",
+    "tags": {
+      "narrative_beat": ["登场", "亮相", "威慑"],
+      "emotion_arc": ["震撼", "敬畏", "压迫"],
+      "pacing": ["medium", "fast"],
+      "character_count": [1]
+    },
+    "shot_formula": {
+      "frame_type": "medium",
+      "composition": "low_angle",
+      "camera_move": "zoom_out",
+      "duration": "medium"
+    },
+    "examples": ["反派角色首次登场的仰拍", "展现角色力量感"],
+    "weight": 1.0
+  },
+  {
+    "id": "strat_008",
+    "name": "俯拍孤独",
+    "tags": {
+      "narrative_beat": ["独处", "思考", "绝望"],
+      "emotion_arc": ["孤独", "悲伤", "渺小"],
+      "pacing": ["slow"],
+      "character_count": [1]
+    },
+    "shot_formula": {
+      "frame_type": "wide",
+      "composition": "high_angle",
+      "camera_move": "static",
+      "duration": "long"
+    },
+    "examples": ["角色独坐在空旷场景的俯拍", "展现角色的渺小感"],
+    "weight": 1.0
+  },
+  {
+    "id": "strat_009",
+    "name": "快切节奏",
+    "tags": {
+      "narrative_beat": ["高潮", "打斗", "混乱"],
+      "emotion_arc": ["激动", "混乱", "紧张"],
+      "pacing": ["fast"],
+      "character_count": [1, 2, 3]
+    },
+    "shot_formula": {
+      "frame_type": "close_up",
+      "composition": "rule_of_thirds",
+      "camera_move": "static",
+      "duration": "short"
+    },
+    "examples": ["打斗场景的快速切换", "多角度快切展现紧张感"],
+    "weight": 1.0
+  },
+  {
+    "id": "strat_010",
+    "name": "尾部悬念",
+    "tags": {
+      "narrative_beat": ["悬念", "尾声", "结尾"],
+      "emotion_arc": ["好奇", "紧张", "期待"],
+      "pacing": ["medium"],
+      "character_count": [0, 1]
+    },
+    "shot_formula": {
+      "frame_type": "medium",
+      "composition": "center",
+      "camera_move": "zoom_in",
+      "duration": "medium"
+    },
+    "examples": ["结尾画面缓慢推进到悬念画面", "未解之谜的暗示镜头"],
+    "weight": 1.0
+  }
+]
