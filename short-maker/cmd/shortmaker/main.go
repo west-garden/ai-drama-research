@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/west-garden/short-maker/internal/agent"
 	"github.com/west-garden/short-maker/internal/api"
+	"github.com/west-garden/short-maker/internal/config"
 	"github.com/west-garden/short-maker/internal/domain"
 	"github.com/west-garden/short-maker/internal/llm"
 	"github.com/west-garden/short-maker/internal/quality"
@@ -36,17 +37,18 @@ var runCmd = &cobra.Command{
 
 		styleName, _ := cmd.Flags().GetString("style")
 		episodes, _ := cmd.Flags().GetInt("episodes")
-		useMock, _ := cmd.Flags().GetBool("mock")
-		llmModel, _ := cmd.Flags().GetString("model")
-		dbPath, _ := cmd.Flags().GetString("db")
-		strategyPath, _ := cmd.Flags().GetString("strategies")
-		outputDir, _ := cmd.Flags().GetString("output")
+		configPath, _ := cmd.Flags().GetString("config")
+
+		cfg, err := config.Load(configPath)
+		if err != nil {
+			return fmt.Errorf("load config: %w", err)
+		}
 
 		style := domain.Style(styleName)
 		project := domain.NewProject(scriptPath, style, episodes)
 		state := agent.NewPipelineState(project, string(script))
 
-		agents, cleanup, err := buildAgents(useMock, llmModel, dbPath, strategyPath, outputDir)
+		agents, cleanup, err := buildAgents(cfg)
 		if err != nil {
 			return err
 		}
@@ -73,65 +75,51 @@ var serveCmd = &cobra.Command{
 	Short: "Start the web console server",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		port, _ := cmd.Flags().GetInt("port")
-		outputDir, _ := cmd.Flags().GetString("output")
-		dbPath, _ := cmd.Flags().GetString("db")
-		useMock, _ := cmd.Flags().GetBool("mock")
-		llmModel, _ := cmd.Flags().GetString("model")
-		strategyPath, _ := cmd.Flags().GetString("strategies")
+		configPath, _ := cmd.Flags().GetString("config")
 
-		if dbPath == "" {
-			dbPath = "./shortmaker.db"
+		cfg, err := config.Load(configPath)
+		if err != nil {
+			return fmt.Errorf("load config: %w", err)
 		}
 
-		agents, cleanup, err := buildAgents(useMock, llmModel, dbPath, strategyPath, outputDir)
+		agents, cleanup, err := buildAgents(cfg)
 		if err != nil {
 			return err
 		}
 		defer cleanup()
 
-		st, err := store.NewSQLiteStore(dbPath)
+		st, err := store.NewSQLiteStore(cfg.DBPath)
 		if err != nil {
 			return fmt.Errorf("open database: %w", err)
 		}
 		defer st.Close()
 
-		// Mark any previously running pipelines as failed
 		st.RecoverRunningPipelines(context.Background())
 
-		srv := api.NewServer(agents, st, outputDir)
+		srv := api.NewServer(agents, st, cfg.OutputDir)
 		log.Printf("Starting web console at http://localhost:%d", port)
 		return srv.Start(port)
 	},
 }
 
-func buildAgents(useMock bool, llmModel, dbPath, strategyPath, outputDir string) (map[agent.Phase]agent.Agent, func(), error) {
+func buildAgents(cfg *config.Config) (map[agent.Phase]agent.Agent, func(), error) {
 	agents := map[agent.Phase]agent.Agent{}
 	cleanup := func() {}
 
-	if useMock {
-		// All mock agents
-		for _, phase := range agent.DefaultFlow {
-			p := phase
-			agents[p] = agent.NewMockAgent(p, func(ctx context.Context, s *agent.PipelineState) (*agent.PipelineState, error) {
-				log.Printf("  [mock-%s] processing...", p)
-				return s, nil
-			})
-		}
-		return agents, cleanup, nil
-	}
-
-	// Real agents for story understanding and character management
-	apiKey := os.Getenv("OPENAI_API_KEY")
+	// LLM client — api_key from config, fallback to env
+	apiKey := cfg.LLM.APIKey
 	if apiKey == "" {
-		return nil, nil, fmt.Errorf("OPENAI_API_KEY environment variable is required when --mock=false")
+		apiKey = os.Getenv("OPENAI_API_KEY")
 	}
-	baseURL := os.Getenv("OPENAI_BASE_URL")
+	if apiKey == "" {
+		return nil, nil, fmt.Errorf("LLM API key required: set llm.api_key in config or OPENAI_API_KEY env")
+	}
+	llmClient := llm.NewOpenAIClient(apiKey, cfg.LLM.BaseURL)
 
-	llmClient := llm.NewOpenAIClient(apiKey, baseURL)
-
+	// Store
 	var st store.Store
-	if dbPath != "" {
-		sqliteStore, err := store.NewSQLiteStore(dbPath)
+	if cfg.DBPath != "" {
+		sqliteStore, err := store.NewSQLiteStore(cfg.DBPath)
 		if err != nil {
 			return nil, nil, fmt.Errorf("open database: %w", err)
 		}
@@ -139,28 +127,48 @@ func buildAgents(useMock bool, llmModel, dbPath, strategyPath, outputDir string)
 		cleanup = func() { sqliteStore.Close() }
 	}
 
-	agents[agent.PhaseStoryUnderstanding] = agent.NewStoryAgent(llmClient, llmModel)
-	agents[agent.PhaseCharacterAsset] = agent.NewCharacterAgent(llmClient, llmModel, st)
+	// Story + Character agents (always use real LLM)
+	agents[agent.PhaseStoryUnderstanding] = agent.NewStoryAgent(llmClient, cfg.LLM.Model)
+	agents[agent.PhaseCharacterAsset] = agent.NewCharacterAgent(llmClient, cfg.LLM.Model, st)
 
-	// Storyboard agent with strategy engine
-	if strategyPath != "" {
-		repo, err := strategy.LoadFromFile(strategyPath)
+	// Storyboard agent
+	if cfg.StrategiesPath != "" {
+		repo, err := strategy.LoadFromFile(cfg.StrategiesPath)
 		if err != nil {
 			return nil, nil, fmt.Errorf("load strategies: %w", err)
 		}
-		agents[agent.PhaseStoryboard] = agent.NewStoryboardAgent(llmClient, llmModel, repo)
+		agents[agent.PhaseStoryboard] = agent.NewStoryboardAgent(llmClient, cfg.LLM.Model, repo)
 	} else {
-		agents[agent.PhaseStoryboard] = agent.NewStoryboardAgent(llmClient, llmModel, nil)
+		agents[agent.PhaseStoryboard] = agent.NewStoryboardAgent(llmClient, cfg.LLM.Model, nil)
 	}
 
-	// Image and video generation agents with model router
-	imageAdapter := router.NewMockImageAdapter()
-	videoAdapter := router.NewMockVideoAdapter()
+	// Image adapter
+	var imageAdapter router.ModelAdapter
+	switch cfg.Image.Provider {
+	case "gemini":
+		imageAdapter = router.NewGeminiImageAdapter(cfg.Image.Gemini.APIKey, cfg.Image.Gemini.Model)
+	case "jimeng":
+		imageAdapter = router.NewJimengImageAdapter(cfg.Image.Jimeng.AccessKey, cfg.Image.Jimeng.SecretKey, cfg.Image.Jimeng.ReqKey)
+	default:
+		imageAdapter = router.NewMockImageAdapter()
+	}
+
+	// Video adapter
+	var videoAdapter router.ModelAdapter
+	switch cfg.Video.Provider {
+	case "gemini":
+		videoAdapter = router.NewGeminiVideoAdapter(cfg.Video.Gemini.APIKey, cfg.Video.Gemini.Model)
+	case "jimeng":
+		videoAdapter = router.NewJimengVideoAdapter(cfg.Video.Jimeng.AccessKey, cfg.Video.Jimeng.SecretKey, cfg.Video.Jimeng.ReqKey)
+	default:
+		videoAdapter = router.NewMockVideoAdapter()
+	}
+
 	modelRouter := router.NewModelRouter(imageAdapter, videoAdapter)
 	checker := quality.NewMockChecker()
 
-	agents[agent.PhaseImageGeneration] = agent.NewImageGenAgent(modelRouter, checker, outputDir)
-	agents[agent.PhaseVideoGeneration] = agent.NewVideoGenAgent(modelRouter, checker, outputDir)
+	agents[agent.PhaseImageGeneration] = agent.NewImageGenAgent(modelRouter, checker, cfg.OutputDir)
+	agents[agent.PhaseVideoGeneration] = agent.NewVideoGenAgent(modelRouter, checker, cfg.OutputDir)
 
 	return agents, cleanup, nil
 }
@@ -193,21 +201,13 @@ func printSummary(result *agent.PipelineState) {
 }
 
 func init() {
+	runCmd.Flags().String("config", "./config.yaml", "Path to config file")
 	runCmd.Flags().String("style", "manga", "Content style: manga, 3d, live_action")
 	runCmd.Flags().Int("episodes", 10, "Number of episodes")
-	runCmd.Flags().Bool("mock", true, "Use mock agents (set false for real LLM calls)")
-	runCmd.Flags().String("model", "gpt-4o-mini", "LLM model name")
-	runCmd.Flags().String("db", "", "SQLite database path (optional, enables persistence)")
-	runCmd.Flags().String("strategies", "", "Path to strategies JSON file (enables real storyboard agent)")
-	runCmd.Flags().String("output", "./output", "Output directory for generated files")
 	rootCmd.AddCommand(runCmd)
 
+	serveCmd.Flags().String("config", "./config.yaml", "Path to config file")
 	serveCmd.Flags().Int("port", 8080, "HTTP server port")
-	serveCmd.Flags().String("output", "./output", "Output directory for generated files")
-	serveCmd.Flags().String("db", "./shortmaker.db", "SQLite database path")
-	serveCmd.Flags().Bool("mock", true, "Use mock agents")
-	serveCmd.Flags().String("model", "gpt-4o-mini", "LLM model name")
-	serveCmd.Flags().String("strategies", "", "Path to strategies JSON file")
 	rootCmd.AddCommand(serveCmd)
 }
 

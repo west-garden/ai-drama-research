@@ -1,0 +1,31 @@
+# config.example.yaml — copy to config.yaml and fill in your API keys
+
+llm:
+  provider: openai
+  api_key: ${OPENAI_API_KEY}       # or paste key directly
+  base_url: https://api.openai.com/v1
+  model: gpt-4o-mini
+
+image:
+  provider: mock                   # gemini | jimeng | mock
+  gemini:
+    api_key: ""                    # your Gemini API key
+    model: imagen-4.0-generate-001
+  jimeng:
+    access_key: ""                 # your Volcengine AK
+    secret_key: ""                 # your Volcengine SK
+    req_key: jimeng_t2i_v40
+
+video:
+  provider: mock                   # gemini | jimeng | mock
+  gemini:
+    api_key: ""                    # your Gemini API key
+    model: veo-3.1-generate-preview
+  jimeng:
+    access_key: ""                 # your Volcengine AK
+    secret_key: ""                 # your Volcengine SK
+    req_key: jimeng_vgfm_i2v_l20
+
+output_dir: ./output
+db_path: ./shortmaker.db
+strategies_path: ""               # path to strategies.json (empty = no strategies)
