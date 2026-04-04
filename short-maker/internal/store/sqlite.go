@@ -56,6 +56,19 @@ func (s *SQLiteStore) migrate() error {
 		project_id TEXT PRIMARY KEY,
 		data TEXT NOT NULL
 	);
+	CREATE TABLE IF NOT EXISTS pipeline_runs (
+		project_id    TEXT PRIMARY KEY,
+		status        TEXT NOT NULL DEFAULT 'running',
+		current_phase TEXT NOT NULL DEFAULT '',
+		error         TEXT NOT NULL DEFAULT '',
+		created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE TABLE IF NOT EXISTS pipeline_results (
+		project_id   TEXT PRIMARY KEY,
+		result_json  TEXT NOT NULL,
+		updated_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
 	`
 	_, err := s.db.Exec(schema)
 	return err
@@ -185,4 +198,71 @@ func (s *SQLiteStore) GetBlueprint(ctx context.Context, projectID string) (*doma
 		return nil, fmt.Errorf("unmarshal blueprint: %w", err)
 	}
 	return bp, nil
+}
+
+func (s *SQLiteStore) SavePipelineRun(ctx context.Context, run *PipelineRunRecord) error {
+	_, err := s.db.ExecContext(ctx,
+		"INSERT OR REPLACE INTO pipeline_runs (project_id, status, current_phase, error, created_at, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+		run.ProjectID, run.Status, run.CurrentPhase, run.Error)
+	return err
+}
+
+func (s *SQLiteStore) GetPipelineRun(ctx context.Context, projectID string) (*PipelineRunRecord, error) {
+	r := &PipelineRunRecord{}
+	err := s.db.QueryRowContext(ctx,
+		"SELECT project_id, status, current_phase, error, created_at, updated_at FROM pipeline_runs WHERE project_id = ?", projectID).
+		Scan(&r.ProjectID, &r.Status, &r.CurrentPhase, &r.Error, &r.CreatedAt, &r.UpdatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("get pipeline run %s: %w", projectID, err)
+	}
+	return r, nil
+}
+
+func (s *SQLiteStore) UpdatePipelineRun(ctx context.Context, projectID string, status string, phase string, errMsg string) error {
+	_, err := s.db.ExecContext(ctx,
+		"UPDATE pipeline_runs SET status = ?, current_phase = ?, error = ?, updated_at = CURRENT_TIMESTAMP WHERE project_id = ?",
+		status, phase, errMsg, projectID)
+	return err
+}
+
+func (s *SQLiteStore) SavePipelineResult(ctx context.Context, projectID string, resultJSON []byte) error {
+	_, err := s.db.ExecContext(ctx,
+		"INSERT OR REPLACE INTO pipeline_results (project_id, result_json, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+		projectID, string(resultJSON))
+	return err
+}
+
+func (s *SQLiteStore) GetPipelineResult(ctx context.Context, projectID string) ([]byte, error) {
+	var data string
+	err := s.db.QueryRowContext(ctx,
+		"SELECT result_json FROM pipeline_results WHERE project_id = ?", projectID).Scan(&data)
+	if err != nil {
+		return nil, fmt.Errorf("get pipeline result %s: %w", projectID, err)
+	}
+	return []byte(data), nil
+}
+
+func (s *SQLiteStore) ListProjects(ctx context.Context) ([]*domain.Project, error) {
+	rows, err := s.db.QueryContext(ctx,
+		"SELECT id, name, style, episode_count, status, created_at FROM projects ORDER BY created_at DESC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var projects []*domain.Project
+	for rows.Next() {
+		p := &domain.Project{}
+		if err := rows.Scan(&p.ID, &p.Name, &p.Style, &p.EpisodeCount, &p.Status, &p.CreatedAt); err != nil {
+			return nil, err
+		}
+		projects = append(projects, p)
+	}
+	return projects, nil
+}
+
+func (s *SQLiteStore) RecoverRunningPipelines(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx,
+		"UPDATE pipeline_runs SET status = 'failed', error = 'server restarted', updated_at = CURRENT_TIMESTAMP WHERE status = 'running'")
+	return err
 }
