@@ -12,6 +12,7 @@ import (
 	"github.com/west-garden/short-maker/internal/domain"
 	"github.com/west-garden/short-maker/internal/llm"
 	"github.com/west-garden/short-maker/internal/store"
+	"github.com/west-garden/short-maker/internal/strategy"
 )
 
 var rootCmd = &cobra.Command{
@@ -35,12 +36,13 @@ var runCmd = &cobra.Command{
 		useMock, _ := cmd.Flags().GetBool("mock")
 		llmModel, _ := cmd.Flags().GetString("model")
 		dbPath, _ := cmd.Flags().GetString("db")
+		strategyPath, _ := cmd.Flags().GetString("strategies")
 
 		style := domain.Style(styleName)
 		project := domain.NewProject(scriptPath, style, episodes)
 		state := agent.NewPipelineState(project, string(script))
 
-		agents, cleanup, err := buildAgents(useMock, llmModel, dbPath)
+		agents, cleanup, err := buildAgents(useMock, llmModel, dbPath, strategyPath)
 		if err != nil {
 			return err
 		}
@@ -62,7 +64,7 @@ var runCmd = &cobra.Command{
 	},
 }
 
-func buildAgents(useMock bool, llmModel, dbPath string) (map[agent.Phase]agent.Agent, func(), error) {
+func buildAgents(useMock bool, llmModel, dbPath, strategyPath string) (map[agent.Phase]agent.Agent, func(), error) {
 	agents := map[agent.Phase]agent.Agent{}
 	cleanup := func() {}
 
@@ -100,7 +102,18 @@ func buildAgents(useMock bool, llmModel, dbPath string) (map[agent.Phase]agent.A
 	agents[agent.PhaseStoryUnderstanding] = agent.NewStoryAgent(llmClient, llmModel)
 	agents[agent.PhaseCharacterAsset] = agent.NewCharacterAgent(llmClient, llmModel, st)
 
-	// Remaining phases still use mocks — real implementations come in Plan 3-4
+	// Storyboard agent with strategy engine
+	if strategyPath != "" {
+		repo, err := strategy.LoadFromFile(strategyPath)
+		if err != nil {
+			return nil, nil, fmt.Errorf("load strategies: %w", err)
+		}
+		agents[agent.PhaseStoryboard] = agent.NewStoryboardAgent(llmClient, llmModel, repo)
+	} else {
+		agents[agent.PhaseStoryboard] = agent.NewStoryboardAgent(llmClient, llmModel, nil)
+	}
+
+	// Remaining phases still use mocks — real implementations come in Plan 4+
 	for _, phase := range agent.DefaultFlow {
 		if _, ok := agents[phase]; !ok {
 			p := phase
@@ -139,6 +152,7 @@ func init() {
 	runCmd.Flags().Bool("mock", true, "Use mock agents (set false for real LLM calls)")
 	runCmd.Flags().String("model", "gpt-4o-mini", "LLM model name")
 	runCmd.Flags().String("db", "", "SQLite database path (optional, enables persistence)")
+	runCmd.Flags().String("strategies", "", "Path to strategies JSON file (enables real storyboard agent)")
 	rootCmd.AddCommand(runCmd)
 }
 
