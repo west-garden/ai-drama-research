@@ -75,7 +75,7 @@ func (a *CharacterAgent) generateVisualDescription(ctx context.Context, ch *doma
 			{Role: "user", Content: userPrompt},
 		},
 		Temperature: 0.5,
-		MaxTokens:   1024,
+		MaxTokens:   4096,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("LLM call: %w", err)

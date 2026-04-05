@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"github.com/west-garden/short-maker/internal/domain"
 	"github.com/west-garden/short-maker/internal/llm"
@@ -25,6 +26,7 @@ func (a *StoryAgent) Run(ctx context.Context, state *PipelineState) (*PipelineSt
 	systemPrompt := buildStorySystemPrompt()
 	userPrompt := buildStoryUserPrompt(state.Script, string(state.Project.Style), state.Project.EpisodeCount)
 
+	log.Printf("[story-agent] sending request to LLM (model=%s, maxTokens=65536)", a.model)
 	resp, err := a.llmClient.Chat(ctx, llm.Request{
 		Model: a.model,
 		Messages: []llm.Message{
@@ -32,11 +34,12 @@ func (a *StoryAgent) Run(ctx context.Context, state *PipelineState) (*PipelineSt
 			{Role: "user", Content: userPrompt},
 		},
 		Temperature: 0.3,
-		MaxTokens:   4096,
+		MaxTokens:   65536,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("story LLM call: %w", err)
 	}
+	log.Printf("[story-agent] LLM response received (len=%d, tokens=%d)", len(resp.Content), resp.TokensUsed)
 
 	var parsed storyAnalysisResponse
 	if err := llm.ParseJSON(resp.Content, &parsed); err != nil {

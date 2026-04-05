@@ -49,6 +49,18 @@ func TestExtractJSON_NestedBraces(t *testing.T) {
 	}
 }
 
+func TestExtractJSON_ThinkingTags(t *testing.T) {
+	input := "<think>\nLet me analyze this script. The world has {complex} elements.\n</think>\n{\"world_view\": \"fantasy\"}"
+	got, err := ExtractJSON(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := `{"world_view": "fantasy"}`
+	if got != expected {
+		t.Errorf("expected %q, got %q", expected, got)
+	}
+}
+
 func TestExtractJSON_NoJSON(t *testing.T) {
 	input := "This response has no JSON at all."
 	_, err := ExtractJSON(input)

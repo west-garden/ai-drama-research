@@ -103,7 +103,7 @@ func (a *StoryboardAgent) generateShotsForScene(
 			{Role: "user", Content: userPrompt},
 		},
 		Temperature: 0.4,
-		MaxTokens:   2048,
+		MaxTokens:   8192,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("LLM call: %w", err)

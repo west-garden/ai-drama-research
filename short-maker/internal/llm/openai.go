@@ -35,7 +35,7 @@ func NewOpenAIClient(apiKey, baseURL, proxyURL string) *OpenAIClient {
 		}
 	}
 	return &OpenAIClient{
-		httpClient: &http.Client{Timeout: 120 * time.Second, Transport: transport},
+		httpClient: &http.Client{Timeout: 300 * time.Second, Transport: transport},
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		apiKey:     apiKey,
 	}
