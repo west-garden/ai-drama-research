@@ -21,6 +21,7 @@ type LLMConfig struct {
 	APIKey   string `yaml:"api_key"`
 	BaseURL  string `yaml:"base_url"`
 	Model    string `yaml:"model"`
+	Proxy    string `yaml:"proxy"`
 }
 
 type ImageConfig struct {
@@ -40,6 +41,7 @@ type VideoConfig struct {
 type GeminiConfig struct {
 	APIKey string `yaml:"api_key"`
 	Model  string `yaml:"model"`
+	Proxy  string `yaml:"proxy"`
 }
 
 type JimengConfig struct {

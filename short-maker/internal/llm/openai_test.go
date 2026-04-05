@@ -45,7 +45,7 @@ func TestOpenAIClient_Chat(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewOpenAIClient("test-api-key", server.URL)
+	client := NewOpenAIClient("test-api-key", server.URL, "")
 	resp, err := client.Chat(context.Background(), Request{
 		Model: "test-model",
 		Messages: []Message{
@@ -73,7 +73,7 @@ func TestOpenAIClient_ChatError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewOpenAIClient("test-key", server.URL)
+	client := NewOpenAIClient("test-key", server.URL, "")
 	_, err := client.Chat(context.Background(), Request{
 		Model:    "test-model",
 		Messages: []Message{{Role: "user", Content: "hello"}},
@@ -84,7 +84,7 @@ func TestOpenAIClient_ChatError(t *testing.T) {
 }
 
 func TestOpenAIClient_DefaultBaseURL(t *testing.T) {
-	client := NewOpenAIClient("key", "")
+	client := NewOpenAIClient("key", "", "")
 	if client.baseURL != "https://api.openai.com/v1" {
 		t.Errorf("expected default base URL, got '%s'", client.baseURL)
 	}

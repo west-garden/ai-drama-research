@@ -114,7 +114,7 @@ func buildAgents(cfg *config.Config) (map[agent.Phase]agent.Agent, func(), error
 	if apiKey == "" {
 		return nil, nil, fmt.Errorf("LLM API key required: set llm.api_key in config or OPENAI_API_KEY env")
 	}
-	llmClient := llm.NewOpenAIClient(apiKey, cfg.LLM.BaseURL)
+	llmClient := llm.NewOpenAIClient(apiKey, cfg.LLM.BaseURL, cfg.LLM.Proxy)
 
 	// Store
 	var st store.Store
@@ -147,7 +147,7 @@ func buildAgents(cfg *config.Config) (map[agent.Phase]agent.Agent, func(), error
 	for _, p := range cfg.Image.Providers {
 		switch p {
 		case "gemini":
-			adapters = append(adapters, router.NewGeminiImageAdapter(cfg.Image.Gemini.APIKey, cfg.Image.Gemini.Model))
+			adapters = append(adapters, router.NewGeminiImageAdapter(cfg.Image.Gemini.APIKey, cfg.Image.Gemini.Model, cfg.Image.Gemini.Proxy))
 		case "jimeng":
 			adapters = append(adapters, router.NewJimengImageAdapter(cfg.Image.Jimeng.AccessKey, cfg.Image.Jimeng.SecretKey, cfg.Image.Jimeng.ReqKey))
 		default:
@@ -159,7 +159,7 @@ func buildAgents(cfg *config.Config) (map[agent.Phase]agent.Agent, func(), error
 	for _, p := range cfg.Video.Providers {
 		switch p {
 		case "gemini":
-			adapters = append(adapters, router.NewGeminiVideoAdapter(cfg.Video.Gemini.APIKey, cfg.Video.Gemini.Model))
+			adapters = append(adapters, router.NewGeminiVideoAdapter(cfg.Video.Gemini.APIKey, cfg.Video.Gemini.Model, cfg.Video.Gemini.Proxy))
 		case "jimeng":
 			adapters = append(adapters, router.NewJimengVideoAdapter(cfg.Video.Jimeng.AccessKey, cfg.Video.Jimeng.SecretKey, cfg.Video.Jimeng.ReqKey))
 		default:

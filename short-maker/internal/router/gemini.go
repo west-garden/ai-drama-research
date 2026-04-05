@@ -4,20 +4,37 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
+	"net/url"
 	"os"
 	"time"
 
 	"google.golang.org/genai"
 )
 
-// GeminiImageAdapter uses Imagen via the Google GenAI SDK.
-type GeminiImageAdapter struct {
-	apiKey string
-	model  string
+// proxyHTTPClient returns an *http.Client with proxy configured, or nil if no proxy.
+func proxyHTTPClient(proxyURL string) *http.Client {
+	if proxyURL == "" {
+		return nil
+	}
+	u, err := url.Parse(proxyURL)
+	if err != nil {
+		return nil
+	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = http.ProxyURL(u)
+	return &http.Client{Transport: transport}
 }
 
-func NewGeminiImageAdapter(apiKey, model string) *GeminiImageAdapter {
-	return &GeminiImageAdapter{apiKey: apiKey, model: model}
+// GeminiImageAdapter uses Imagen via the Google GenAI SDK.
+type GeminiImageAdapter struct {
+	apiKey     string
+	model      string
+	httpClient *http.Client
+}
+
+func NewGeminiImageAdapter(apiKey, model, proxyURL string) *GeminiImageAdapter {
+	return &GeminiImageAdapter{apiKey: apiKey, model: model, httpClient: proxyHTTPClient(proxyURL)}
 }
 
 func (a *GeminiImageAdapter) Name() string { return "gemini-image" }
@@ -35,8 +52,9 @@ func (a *GeminiImageAdapter) Generate(ctx context.Context, req GenerateRequest) 
 	start := time.Now()
 
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey:  a.apiKey,
-		Backend: genai.BackendGeminiAPI,
+		APIKey:     a.apiKey,
+		Backend:    genai.BackendGeminiAPI,
+		HTTPClient: a.httpClient,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("gemini client: %w", err)
@@ -71,20 +89,22 @@ func (a *GeminiImageAdapter) Generate(ctx context.Context, req GenerateRequest) 
 
 func (a *GeminiImageAdapter) HealthCheck(ctx context.Context) error {
 	_, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey:  a.apiKey,
-		Backend: genai.BackendGeminiAPI,
+		APIKey:     a.apiKey,
+		Backend:    genai.BackendGeminiAPI,
+		HTTPClient: a.httpClient,
 	})
 	return err
 }
 
 // GeminiVideoAdapter uses Veo via the Google GenAI SDK.
 type GeminiVideoAdapter struct {
-	apiKey string
-	model  string
+	apiKey     string
+	model      string
+	httpClient *http.Client
 }
 
-func NewGeminiVideoAdapter(apiKey, model string) *GeminiVideoAdapter {
-	return &GeminiVideoAdapter{apiKey: apiKey, model: model}
+func NewGeminiVideoAdapter(apiKey, model, proxyURL string) *GeminiVideoAdapter {
+	return &GeminiVideoAdapter{apiKey: apiKey, model: model, httpClient: proxyHTTPClient(proxyURL)}
 }
 
 func (a *GeminiVideoAdapter) Name() string { return "gemini-video" }
@@ -102,8 +122,9 @@ func (a *GeminiVideoAdapter) Generate(ctx context.Context, req GenerateRequest) 
 	start := time.Now()
 
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey:  a.apiKey,
-		Backend: genai.BackendGeminiAPI,
+		APIKey:     a.apiKey,
+		Backend:    genai.BackendGeminiAPI,
+		HTTPClient: a.httpClient,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("gemini client: %w", err)
@@ -178,8 +199,9 @@ func (a *GeminiVideoAdapter) Generate(ctx context.Context, req GenerateRequest) 
 
 func (a *GeminiVideoAdapter) HealthCheck(ctx context.Context) error {
 	_, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey:  a.apiKey,
-		Backend: genai.BackendGeminiAPI,
+		APIKey:     a.apiKey,
+		Backend:    genai.BackendGeminiAPI,
+		HTTPClient: a.httpClient,
 	})
 	return err
 }

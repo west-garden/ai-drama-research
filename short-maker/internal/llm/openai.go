@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -22,12 +23,19 @@ type OpenAIClient struct {
 
 // NewOpenAIClient creates a client for an OpenAI-compatible API.
 // If baseURL is empty, defaults to "https://api.openai.com/v1".
-func NewOpenAIClient(apiKey, baseURL string) *OpenAIClient {
+// If proxyURL is non-empty, HTTP requests are routed through that proxy.
+func NewOpenAIClient(apiKey, baseURL, proxyURL string) *OpenAIClient {
 	if baseURL == "" {
 		baseURL = "https://api.openai.com/v1"
 	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if proxyURL != "" {
+		if u, err := url.Parse(proxyURL); err == nil {
+			transport.Proxy = http.ProxyURL(u)
+		}
+	}
 	return &OpenAIClient{
-		httpClient: &http.Client{Timeout: 120 * time.Second},
+		httpClient: &http.Client{Timeout: 120 * time.Second, Transport: transport},
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		apiKey:     apiKey,
 	}

@@ -20,7 +20,7 @@ func buildImageAdapter(cfg *config.Config, provider string) router.ModelAdapter 
 		if cfg.Image.Gemini.APIKey == "" {
 			return nil
 		}
-		return router.NewGeminiImageAdapter(cfg.Image.Gemini.APIKey, cfg.Image.Gemini.Model)
+		return router.NewGeminiImageAdapter(cfg.Image.Gemini.APIKey, cfg.Image.Gemini.Model, cfg.Image.Gemini.Proxy)
 	case "jimeng":
 		if cfg.Image.Jimeng.AccessKey == "" || cfg.Image.Jimeng.SecretKey == "" {
 			return nil
