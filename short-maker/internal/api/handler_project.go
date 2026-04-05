@@ -202,7 +202,7 @@ func (s *Server) handleRunPhase(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 
 	// Run single phase in background
-	go s.runSinglePhase(project, &state, run, nextPhase, req.Episode)
+	go s.runSinglePhase(project, &state, run, nextPhase, pipelineRun.CurrentPhase, req.Episode)
 
 	writeJSON(w, http.StatusOK, map[string]string{
 		"status": "running",
@@ -210,7 +210,7 @@ func (s *Server) handleRunPhase(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) runSinglePhase(project *domain.Project, state *agent.PipelineState, run *PipelineRun, phase agent.Phase, episode int) {
+func (s *Server) runSinglePhase(project *domain.Project, state *agent.PipelineState, run *PipelineRun, phase agent.Phase, prevPhase string, episode int) {
 	defer close(run.Events)
 
 	ag, ok := s.agents[phase]
@@ -219,7 +219,7 @@ func (s *Server) runSinglePhase(project *domain.Project, state *agent.PipelineSt
 		run.Error = fmt.Sprintf("no agent for phase %s", phase)
 		run.Events <- SSEEvent{Type: "error", Message: run.Error}
 		ctx := context.Background()
-		s.store.UpdatePipelineRun(ctx, project.ID, "paused", string(run.Phase), run.Error)
+		s.store.UpdatePipelineRun(ctx, project.ID, "paused", prevPhase, run.Error)
 		return
 	}
 
@@ -241,7 +241,7 @@ func (s *Server) runSinglePhase(project *domain.Project, state *agent.PipelineSt
 		run.Status = "paused"
 		run.Error = err.Error()
 		run.Events <- SSEEvent{Type: "error", Message: err.Error()}
-		s.store.UpdatePipelineRun(ctx, project.ID, "paused", string(run.Phase), err.Error())
+		s.store.UpdatePipelineRun(ctx, project.ID, "paused", prevPhase, err.Error())
 		return
 	}
 
