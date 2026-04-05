@@ -43,16 +43,79 @@ func ExtractJSON(text string) (string, error) {
 	}
 
 	candidate := text[start : end+1]
-	if !json.Valid([]byte(candidate)) {
-		// Log a preview of the invalid content for debugging
-		preview := candidate
-		if len(preview) > 500 {
-			preview = preview[:250] + "\n...[truncated]...\n" + preview[len(preview)-250:]
-		}
-		log.Printf("[parse] invalid JSON extracted (len=%d):\n%s", len(candidate), preview)
-		return "", fmt.Errorf("extracted text is not valid JSON (len=%d)", len(candidate))
+	if json.Valid([]byte(candidate)) {
+		return candidate, nil
 	}
-	return candidate, nil
+
+	// Try to repair common LLM JSON issues (unescaped control chars in strings)
+	repaired := repairJSON(candidate)
+	if json.Valid([]byte(repaired)) {
+		log.Printf("[parse] repaired invalid JSON (len=%d -> %d)", len(candidate), len(repaired))
+		return repaired, nil
+	}
+
+	// Log a preview of the invalid content for debugging
+	preview := candidate
+	if len(preview) > 500 {
+		preview = preview[:250] + "\n...[truncated]...\n" + preview[len(preview)-250:]
+	}
+	log.Printf("[parse] invalid JSON extracted (len=%d):\n%s", len(candidate), preview)
+	return "", fmt.Errorf("extracted text is not valid JSON (len=%d)", len(candidate))
+}
+
+// repairJSON attempts to fix common JSON issues from LLM output:
+// - Literal newlines/tabs inside string values (not escaped)
+// - Control characters inside strings
+func repairJSON(text string) string {
+	var result strings.Builder
+	result.Grow(len(text))
+
+	inString := false
+	escaped := false
+
+	for i := 0; i < len(text); i++ {
+		ch := text[i]
+
+		if escaped {
+			result.WriteByte(ch)
+			escaped = false
+			continue
+		}
+
+		if ch == '\\' && inString {
+			result.WriteByte(ch)
+			escaped = true
+			continue
+		}
+
+		if ch == '"' {
+			inString = !inString
+			result.WriteByte(ch)
+			continue
+		}
+
+		if inString {
+			// Replace literal control characters inside strings
+			switch ch {
+			case '\n':
+				result.WriteString(`\n`)
+			case '\r':
+				result.WriteString(`\r`)
+			case '\t':
+				result.WriteString(`\t`)
+			default:
+				if ch < 0x20 {
+					// Skip other control characters
+					continue
+				}
+				result.WriteByte(ch)
+			}
+		} else {
+			result.WriteByte(ch)
+		}
+	}
+
+	return result.String()
 }
 
 // ParseJSON extracts JSON from an LLM response and unmarshals it into dst.
