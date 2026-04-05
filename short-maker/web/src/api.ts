@@ -20,6 +20,57 @@ export interface GeneratedShot {
   video_score: number;
 }
 
+export interface SceneTag {
+  narrative_beat: string;
+  emotion_arc: string;
+  setting: string;
+  pacing: string;
+  character_count: number;
+}
+
+export interface Relationship {
+  character_a: string;
+  character_b: string;
+  type: string;
+}
+
+export interface CharacterProfile {
+  id: string;
+  name: string;
+  description: string;
+  traits: string[];
+}
+
+export interface EpisodeBlueprint {
+  number: number;
+  role: string;
+  emotion_arc: string;
+  scenes: SceneTag[];
+  synopsis: string;
+}
+
+export interface StoryBlueprint {
+  project_id: string;
+  world_view: string;
+  characters: CharacterProfile[];
+  episodes: EpisodeBlueprint[];
+  relationships: Relationship[];
+}
+
+export interface ShotSpec {
+  episode_number: number;
+  shot_number: number;
+  frame_type: string;
+  composition: string;
+  camera_move: string;
+  emotion: string;
+  prompt: string;
+  character_refs: string[];
+  scene_ref: string;
+  rhythm_position: string;
+  content_type: string;
+}
+
 export interface ProjectDetail {
   project: {
     id: string;
@@ -30,17 +81,28 @@ export interface ProjectDetail {
   };
   pipeline_status: string;
   current_phase: string;
-  blueprint?: any;
-  storyboard?: any[];
+  next_phase: string;
+  blueprint?: StoryBlueprint;
+  storyboard?: ShotSpec[];
   images?: GeneratedShot[];
   videos?: GeneratedShot[];
   errors?: string[];
 }
 
 export interface SSEEvent {
-  type: "phase_start" | "phase_complete" | "done" | "error";
+  type: "phase_start" | "phase_complete" | "done" | "error" | "paused";
   phase?: string;
   message?: string;
+}
+
+export interface RunPhaseRequest {
+  phase?: string;
+  episode?: number;
+}
+
+export interface RunPhaseResponse {
+  status: string;
+  phase: string;
 }
 
 export async function createProject(form: FormData): Promise<any> {
@@ -60,6 +122,19 @@ export async function listProjects(): Promise<ProjectSummary[]> {
 
 export async function getProject(id: string): Promise<ProjectDetail> {
   const res = await fetch(`${API_BASE}/projects/${id}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function runPhase(
+  projectId: string,
+  req: RunPhaseRequest
+): Promise<RunPhaseResponse> {
+  const res = await fetch(`${API_BASE}/projects/${projectId}/run-phase`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }

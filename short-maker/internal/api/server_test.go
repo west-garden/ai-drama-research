@@ -161,20 +161,17 @@ func TestGetProject_NotFound(t *testing.T) {
 	}
 }
 
-func TestSSE_CompletedProject(t *testing.T) {
+func TestSSE_PausedProject(t *testing.T) {
 	srv := setupTestServer(t)
 	created := createTestProject(t, srv)
 	id := created["id"].(string)
-
-	// Wait for pipeline to finish so events channel is closed
-	time.Sleep(500 * time.Millisecond)
 
 	req := httptest.NewRequest("GET", "/api/projects/"+id+"/events", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
 	body := w.Body.String()
-	if !strings.Contains(body, "\"type\":\"done\"") {
-		t.Errorf("expected done event in SSE response, got: %s", body)
+	if !strings.Contains(body, "\"type\":\"paused\"") {
+		t.Errorf("expected paused event in SSE response, got: %s", body)
 	}
 }

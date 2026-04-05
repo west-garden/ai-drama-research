@@ -50,6 +50,7 @@ func NewServer(agents map[agent.Phase]agent.Agent, st store.Store, outputDir str
 	r.Post("/api/projects", s.handleCreateProject)
 	r.Get("/api/projects", s.handleListProjects)
 	r.Get("/api/projects/{id}", s.handleGetProject)
+	r.Post("/api/projects/{id}/run-phase", s.handleRunPhase)
 	r.Get("/api/projects/{id}/events", s.handleSSE)
 
 	// Serve generated files

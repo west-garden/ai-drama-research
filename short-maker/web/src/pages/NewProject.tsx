@@ -107,7 +107,7 @@ export default function NewProject() {
           disabled={submitting}
           className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 text-white py-3 rounded-lg font-medium"
         >
-          {submitting ? "创建中..." : "开始生成"}
+          {submitting ? "创建中..." : "创建项目"}
         </button>
       </form>
     </div>

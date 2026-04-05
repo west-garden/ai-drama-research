@@ -38,6 +38,8 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 			writeSSEEvent(w, flusher, SSEEvent{Type: "done"})
 		} else if pipelineRun.Status == "failed" {
 			writeSSEEvent(w, flusher, SSEEvent{Type: "error", Message: pipelineRun.Error})
+		} else if pipelineRun.Status == "paused" {
+			writeSSEEvent(w, flusher, SSEEvent{Type: "paused", Phase: pipelineRun.CurrentPhase})
 		}
 		return
 	}

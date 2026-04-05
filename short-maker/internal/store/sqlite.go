@@ -263,6 +263,6 @@ func (s *SQLiteStore) ListProjects(ctx context.Context) ([]*domain.Project, erro
 
 func (s *SQLiteStore) RecoverRunningPipelines(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx,
-		"UPDATE pipeline_runs SET status = 'failed', error = 'server restarted', updated_at = CURRENT_TIMESTAMP WHERE status = 'running'")
+		"UPDATE pipeline_runs SET status = 'paused', error = 'server restarted', updated_at = CURRENT_TIMESTAMP WHERE status = 'running'")
 	return err
 }

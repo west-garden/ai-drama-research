@@ -58,70 +58,219 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	run := &PipelineRun{
-		ProjectID: project.ID,
-		Status:    "running",
-		Events:    make(chan SSEEvent, 20),
-	}
-	s.mu.Lock()
-	s.runs[project.ID] = run
-	s.mu.Unlock()
-
 	if err := s.store.SavePipelineRun(ctx, &store.PipelineRunRecord{
 		ProjectID: project.ID,
-		Status:    "running",
+		Status:    "paused",
 	}); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to save pipeline run")
 		return
 	}
 
-	go s.runPipeline(project, string(scriptBytes), run)
+	// Save initial PipelineState with script so run-phase can load it later
+	state := agent.NewPipelineState(project, string(scriptBytes))
+	resultJSON, err := json.Marshal(state)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to serialize initial state")
+		return
+	}
+	if err := s.store.SavePipelineResult(ctx, project.ID, resultJSON); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save initial state")
+		return
+	}
 
 	writeJSON(w, http.StatusCreated, project)
 }
 
-func (s *Server) runPipeline(project *domain.Project, script string, run *PipelineRun) {
-	defer close(run.Events)
-
-	state := agent.NewPipelineState(project, script)
-
-	checkpoint := func(phase agent.Phase, st *agent.PipelineState) error {
-		run.Phase = phase
-
-		// Send SSE event
-		run.Events <- SSEEvent{Type: "phase_complete", Phase: string(phase)}
-
-		// Persist to SQLite
-		ctx := context.Background()
-		s.store.UpdatePipelineRun(ctx, project.ID, "running", string(phase), "")
-
-		resultJSON, err := json.Marshal(st)
-		if err == nil {
-			s.store.SavePipelineResult(ctx, project.ID, resultJSON)
-		}
-		return nil
+// determineNextPhase returns the next phase after currentPhase.
+// If currentPhase is empty, it returns the first phase.
+func determineNextPhase(currentPhase string) (agent.Phase, bool) {
+	if currentPhase == "" {
+		return agent.DefaultFlow[0], true
 	}
+	for i, p := range agent.DefaultFlow {
+		if string(p) == currentPhase {
+			if i+1 < len(agent.DefaultFlow) {
+				return agent.DefaultFlow[i+1], true
+			}
+			return "", false // already at last phase
+		}
+	}
+	return "", false
+}
 
-	orch := agent.NewOrchestrator(s.agents, checkpoint)
-	result, err := orch.Run(context.Background(), state)
+func isLastPhase(phase agent.Phase) bool {
+	return phase == agent.DefaultFlow[len(agent.DefaultFlow)-1]
+}
 
-	ctx := context.Background()
-	if err != nil {
-		run.Status = "failed"
-		run.Error = err.Error()
-		run.Events <- SSEEvent{Type: "error", Message: err.Error()}
-		s.store.UpdatePipelineRun(ctx, project.ID, "failed", string(run.Phase), err.Error())
-		s.store.UpdateProjectStatus(ctx, project.ID, domain.StatusFailed)
+func filterShotsByEpisode(shots []*domain.ShotSpec, episode int) []*domain.ShotSpec {
+	var filtered []*domain.ShotSpec
+	for _, s := range shots {
+		if s.EpisodeNumber == episode {
+			filtered = append(filtered, s)
+		}
+	}
+	return filtered
+}
+
+func filterGeneratedShotsByEpisode(shots []*agent.GeneratedShot, episode int) []*agent.GeneratedShot {
+	var filtered []*agent.GeneratedShot
+	for _, s := range shots {
+		if s.EpisodeNum == episode {
+			filtered = append(filtered, s)
+		}
+	}
+	return filtered
+}
+
+// mergeGeneratedShots replaces shots for the given episode and keeps the rest.
+func mergeGeneratedShots(existing, incoming []*agent.GeneratedShot, episode int) []*agent.GeneratedShot {
+	var result []*agent.GeneratedShot
+	for _, s := range existing {
+		if s.EpisodeNum != episode {
+			result = append(result, s)
+		}
+	}
+	result = append(result, incoming...)
+	return result
+}
+
+type runPhaseRequest struct {
+	Phase   string `json:"phase"`
+	Episode int    `json:"episode"`
+}
+
+func (s *Server) handleRunPhase(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	ctx := r.Context()
+
+	var req runPhaseRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	run.Status = "completed"
-	run.Events <- SSEEvent{Type: "done"}
+	// Load pipeline run
+	pipelineRun, err := s.store.GetPipelineRun(ctx, id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "pipeline run not found")
+		return
+	}
+	if pipelineRun.Status != "paused" {
+		writeError(w, http.StatusConflict, fmt.Sprintf("pipeline is %s, not paused", pipelineRun.Status))
+		return
+	}
 
-	resultJSON, _ := json.Marshal(result)
-	s.store.SavePipelineResult(ctx, project.ID, resultJSON)
-	s.store.UpdatePipelineRun(ctx, project.ID, "completed", "video_generation", "")
-	s.store.UpdateProjectStatus(ctx, project.ID, domain.StatusCompleted)
+	// Determine which phase to run
+	nextPhase, ok := determineNextPhase(pipelineRun.CurrentPhase)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "pipeline already completed all phases")
+		return
+	}
+
+	// Load project
+	project, err := s.store.GetProject(ctx, id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+
+	// Load pipeline state
+	resultJSON, err := s.store.GetPipelineResult(ctx, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load pipeline state")
+		return
+	}
+	var state agent.PipelineState
+	if err := json.Unmarshal(resultJSON, &state); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to parse pipeline state")
+		return
+	}
+	state.Project = project
+
+	// Update status to running
+	s.store.UpdatePipelineRun(ctx, id, "running", pipelineRun.CurrentPhase, "")
+
+	// Create SSE channel for live events
+	run := &PipelineRun{
+		ProjectID: id,
+		Status:    "running",
+		Phase:     nextPhase,
+		Events:    make(chan SSEEvent, 20),
+	}
+	s.mu.Lock()
+	s.runs[id] = run
+	s.mu.Unlock()
+
+	// Run single phase in background
+	go s.runSinglePhase(project, &state, run, nextPhase, req.Episode)
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status": "running",
+		"phase":  string(nextPhase),
+	})
+}
+
+func (s *Server) runSinglePhase(project *domain.Project, state *agent.PipelineState, run *PipelineRun, phase agent.Phase, episode int) {
+	defer close(run.Events)
+
+	ag, ok := s.agents[phase]
+	if !ok {
+		run.Status = "paused"
+		run.Error = fmt.Sprintf("no agent for phase %s", phase)
+		run.Events <- SSEEvent{Type: "error", Message: run.Error}
+		ctx := context.Background()
+		s.store.UpdatePipelineRun(ctx, project.ID, "paused", string(run.Phase), run.Error)
+		return
+	}
+
+	// For image/video phases with episode filter, create a scoped state
+	inputState := state
+	if episode > 0 && (phase == agent.PhaseImageGeneration || phase == agent.PhaseVideoGeneration) {
+		scopedState := *state
+		scopedState.Storyboard = filterShotsByEpisode(state.Storyboard, episode)
+		if phase == agent.PhaseVideoGeneration {
+			scopedState.Images = filterGeneratedShotsByEpisode(state.Images, episode)
+		}
+		inputState = &scopedState
+	}
+
+	result, err := ag.Run(context.Background(), inputState)
+
+	ctx := context.Background()
+	if err != nil {
+		run.Status = "paused"
+		run.Error = err.Error()
+		run.Events <- SSEEvent{Type: "error", Message: err.Error()}
+		s.store.UpdatePipelineRun(ctx, project.ID, "paused", string(run.Phase), err.Error())
+		return
+	}
+
+	// Merge results back for episode-scoped runs
+	if episode > 0 && phase == agent.PhaseImageGeneration {
+		result.Images = mergeGeneratedShots(state.Images, result.Images, episode)
+		// Preserve other fields from original state
+		result.Videos = state.Videos
+	} else if episode > 0 && phase == agent.PhaseVideoGeneration {
+		result.Videos = mergeGeneratedShots(state.Videos, result.Videos, episode)
+		result.Images = state.Images
+	}
+
+	// Persist updated state
+	resultJSON, err := json.Marshal(result)
+	if err == nil {
+		s.store.SavePipelineResult(ctx, project.ID, resultJSON)
+	}
+
+	// Determine final status
+	finalStatus := "paused"
+	if isLastPhase(phase) {
+		finalStatus = "completed"
+		s.store.UpdateProjectStatus(ctx, project.ID, domain.StatusCompleted)
+	}
+
+	run.Status = finalStatus
+	run.Events <- SSEEvent{Type: "phase_complete", Phase: string(phase)}
+	s.store.UpdatePipelineRun(ctx, project.ID, finalStatus, string(phase), "")
 }
 
 func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
@@ -149,12 +298,15 @@ func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 		phase := ""
 		if run, err := s.store.GetPipelineRun(r.Context(), p.ID); err == nil {
 			phase = run.CurrentPhase
-			if run.Status == "running" {
+			switch run.Status {
+			case "running":
 				p.Status = domain.StatusProcessing
-			} else if run.Status == "failed" {
+			case "failed":
 				p.Status = domain.StatusFailed
-			} else if run.Status == "completed" {
+			case "completed":
 				p.Status = domain.StatusCompleted
+			case "paused":
+				p.Status = "paused"
 			}
 		}
 		summaries = append(summaries, projectSummary{
@@ -187,10 +339,19 @@ func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {
 		currentPhase = run.CurrentPhase
 	}
 
+	// Compute next_phase
+	nextPhase := ""
+	if pipelineStatus == "paused" {
+		if np, ok := determineNextPhase(currentPhase); ok {
+			nextPhase = string(np)
+		}
+	}
+
 	type projectDetail struct {
 		Project        *domain.Project `json:"project"`
 		PipelineStatus string          `json:"pipeline_status"`
 		CurrentPhase   string          `json:"current_phase"`
+		NextPhase      string          `json:"next_phase"`
 		Blueprint      json.RawMessage `json:"blueprint,omitempty"`
 		Storyboard     json.RawMessage `json:"storyboard,omitempty"`
 		Images         json.RawMessage `json:"images,omitempty"`
@@ -202,6 +363,7 @@ func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {
 		Project:        project,
 		PipelineStatus: pipelineStatus,
 		CurrentPhase:   currentPhase,
+		NextPhase:      nextPhase,
 	}
 
 	resultJSON, err := s.store.GetPipelineResult(r.Context(), id)

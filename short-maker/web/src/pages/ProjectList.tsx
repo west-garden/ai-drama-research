@@ -8,6 +8,7 @@ const statusColors: Record<string, string> = {
   processing: "bg-blue-500 text-white",
   running: "bg-blue-500 text-white",
   failed: "bg-red-500 text-white",
+  paused: "bg-yellow-500 text-black",
   created: "bg-gray-500 text-white",
 };
 

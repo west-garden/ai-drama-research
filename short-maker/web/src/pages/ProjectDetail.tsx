@@ -1,7 +1,15 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams } from "react-router-dom";
-import { getProject, subscribeToEvents, type ProjectDetail as ProjectDetailType, type SSEEvent } from "../api";
+import {
+  getProject,
+  runPhase,
+  subscribeToEvents,
+  type ProjectDetail as ProjectDetailType,
+  type SSEEvent,
+} from "../api";
 import PipelineProgress from "../components/PipelineProgress";
+import BlueprintView from "../components/BlueprintView";
+import StoryboardView from "../components/StoryboardView";
 import ShotGallery from "../components/ShotGallery";
 
 const PHASE_ORDER = [
@@ -21,51 +29,97 @@ export default function ProjectDetail() {
   );
   const [pipelineStatus, setPipelineStatus] = useState("unknown");
   const [currentPhase, setCurrentPhase] = useState("");
+  const [nextPhase, setNextPhase] = useState("");
+  const [isRunning, setIsRunning] = useState(false);
+  const [error, setError] = useState("");
   const esRef = useRef<EventSource | null>(null);
 
-  useEffect(() => {
+  const refreshProject = useCallback(async () => {
     if (!id) return;
+    try {
+      const d = await getProject(id);
+      setDetail(d);
+      setPipelineStatus(d.pipeline_status);
+      setCurrentPhase(d.current_phase);
+      setNextPhase(d.next_phase || "");
 
-    getProject(id)
-      .then((d) => {
-        setDetail(d);
-        setPipelineStatus(d.pipeline_status);
-        setCurrentPhase(d.current_phase);
-
-        if (d.pipeline_status === "completed") {
-          setCompletedPhases(new Set(PHASE_ORDER));
-        } else if (d.current_phase) {
-          const idx = PHASE_ORDER.indexOf(d.current_phase);
-          if (idx >= 0) {
-            setCompletedPhases(new Set(PHASE_ORDER.slice(0, idx + 1)));
-          }
-        }
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
-
-    const es = subscribeToEvents(id, (event: SSEEvent) => {
-      if (event.type === "phase_complete" && event.phase) {
-        setCompletedPhases((prev) => new Set([...prev, event.phase!]));
-        setCurrentPhase(event.phase);
-      }
-      if (event.type === "done") {
-        setPipelineStatus("completed");
+      if (d.pipeline_status === "completed") {
         setCompletedPhases(new Set(PHASE_ORDER));
-        getProject(id).then(setDetail);
-        es.close();
+      } else if (d.current_phase) {
+        const idx = PHASE_ORDER.indexOf(d.current_phase);
+        if (idx >= 0) {
+          setCompletedPhases(new Set(PHASE_ORDER.slice(0, idx + 1)));
+        }
       }
-      if (event.type === "error") {
-        setPipelineStatus("failed");
-        es.close();
-      }
-    });
-    esRef.current = es;
 
-    return () => {
-      es.close();
-    };
+      if (d.pipeline_status === "running") {
+        setIsRunning(true);
+      } else {
+        setIsRunning(false);
+      }
+    } catch (err: any) {
+      console.error(err);
+    }
   }, [id]);
+
+  useEffect(() => {
+    refreshProject().finally(() => setLoading(false));
+  }, [refreshProject]);
+
+  const handleRunPhase = async (phase: string, episode?: number) => {
+    if (!id) return;
+    setError("");
+    setIsRunning(true);
+
+    try {
+      await runPhase(id, { phase, episode });
+
+      // Subscribe to SSE for this run
+      if (esRef.current) {
+        esRef.current.close();
+      }
+
+      const es = subscribeToEvents(id, (event: SSEEvent) => {
+        if (event.type === "phase_complete" && event.phase) {
+          setCompletedPhases((prev) => new Set([...prev, event.phase!]));
+          setCurrentPhase(event.phase);
+          setIsRunning(false);
+          es.close();
+          esRef.current = null;
+          refreshProject();
+        }
+        if (event.type === "done") {
+          setPipelineStatus("completed");
+          setCompletedPhases(new Set(PHASE_ORDER));
+          setIsRunning(false);
+          es.close();
+          esRef.current = null;
+          refreshProject();
+        }
+        if (event.type === "error") {
+          setIsRunning(false);
+          setPipelineStatus("paused");
+          setError(event.message || "Pipeline 执行失败");
+          es.close();
+          esRef.current = null;
+          refreshProject();
+        }
+      });
+      esRef.current = es;
+    } catch (err: any) {
+      setIsRunning(false);
+      setError(err.message || "启动失败");
+      refreshProject();
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (esRef.current) {
+        esRef.current.close();
+      }
+    };
+  }, []);
 
   if (loading) {
     return <div className="text-gray-500">加载中...</div>;
@@ -79,6 +133,7 @@ export default function ProjectDetail() {
     running: "运行中",
     completed: "已完成",
     failed: "失败",
+    paused: "等待操作",
     unknown: "未知",
   };
 
@@ -86,6 +141,7 @@ export default function ProjectDetail() {
     running: "bg-blue-500",
     completed: "bg-green-500",
     failed: "bg-red-500",
+    paused: "bg-yellow-500",
     unknown: "bg-gray-500",
   };
 
@@ -107,26 +163,57 @@ export default function ProjectDetail() {
         currentPhase={currentPhase}
         status={pipelineStatus}
         completedPhases={completedPhases}
+        nextPhase={nextPhase}
+        episodeCount={detail.project.episode_count}
+        onRunPhase={handleRunPhase}
+        isRunning={isRunning}
       />
 
+      {error && (
+        <div className="text-red-400 text-sm mb-4 bg-red-900/20 border border-red-800 rounded-lg p-3">
+          {error}
+        </div>
+      )}
+
+      {detail.blueprint && (
+        <div className="mb-6">
+          <h3 className="text-lg font-bold mb-3">剧本蓝图</h3>
+          <BlueprintView blueprint={detail.blueprint} />
+        </div>
+      )}
+
+      {detail.storyboard && detail.storyboard.length > 0 && (
+        <div className="mb-6">
+          <h3 className="text-lg font-bold mb-3">分镜</h3>
+          <StoryboardView storyboard={detail.storyboard} />
+        </div>
+      )}
+
       {detail.images && detail.images.length > 0 && (
-        <ShotGallery
-          images={detail.images}
-          videos={detail.videos || []}
-        />
-      )}
-
-      {pipelineStatus === "running" && (!detail.images || detail.images.length === 0) && (
-        <div className="text-center py-12 text-gray-500">
-          Pipeline 运行中，请等待...
+        <div className="mb-6">
+          <h3 className="text-lg font-bold mb-3">图片/视频</h3>
+          <ShotGallery
+            images={detail.images}
+            videos={detail.videos || []}
+          />
         </div>
       )}
 
-      {pipelineStatus === "failed" && (
-        <div className="text-center py-12 text-red-400">
-          Pipeline 执行失败
-        </div>
-      )}
+      {pipelineStatus === "paused" &&
+        !detail.blueprint &&
+        (!detail.storyboard || detail.storyboard.length === 0) &&
+        (!detail.images || detail.images.length === 0) && (
+          <div className="text-center py-12 text-gray-500">
+            点击上方"运行"按钮开始第一个阶段
+          </div>
+        )}
+
+      {pipelineStatus === "completed" &&
+        (!detail.images || detail.images.length === 0) && (
+          <div className="text-center py-12 text-gray-500">
+            Pipeline 已完成
+          </div>
+        )}
     </div>
   );
 }

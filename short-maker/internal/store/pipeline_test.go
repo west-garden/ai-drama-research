@@ -118,8 +118,8 @@ func TestRecoverRunningPipelines(t *testing.T) {
 	}
 
 	got, _ := s.GetPipelineRun(ctx, "proj_running")
-	if got.Status != "failed" {
-		t.Errorf("expected status 'failed', got '%s'", got.Status)
+	if got.Status != "paused" {
+		t.Errorf("expected status 'paused', got '%s'", got.Status)
 	}
 	if got.Error != "server restarted" {
 		t.Errorf("expected error 'server restarted', got '%s'", got.Error)
