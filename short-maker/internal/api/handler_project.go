@@ -353,6 +353,7 @@ func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {
 		CurrentPhase   string          `json:"current_phase"`
 		NextPhase      string          `json:"next_phase"`
 		Blueprint      json.RawMessage `json:"blueprint,omitempty"`
+		Assets         json.RawMessage `json:"assets,omitempty"`
 		Storyboard     json.RawMessage `json:"storyboard,omitempty"`
 		Images         json.RawMessage `json:"images,omitempty"`
 		Videos         json.RawMessage `json:"videos,omitempty"`
@@ -371,6 +372,7 @@ func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {
 		var raw map[string]json.RawMessage
 		if json.Unmarshal(resultJSON, &raw) == nil {
 			detail.Blueprint = raw["blueprint"]
+			detail.Assets = raw["assets"]
 			detail.Storyboard = raw["storyboard"]
 			detail.Images = raw["images"]
 			detail.Videos = raw["videos"]

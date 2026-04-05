@@ -9,6 +9,7 @@ import {
 } from "../api";
 import PipelineProgress from "../components/PipelineProgress";
 import BlueprintView from "../components/BlueprintView";
+import CharacterAssetView from "../components/CharacterAssetView";
 import StoryboardView from "../components/StoryboardView";
 import ShotGallery from "../components/ShotGallery";
 
@@ -179,6 +180,13 @@ export default function ProjectDetail() {
         <div className="mb-6">
           <h3 className="text-lg font-bold mb-3">剧本蓝图</h3>
           <BlueprintView blueprint={detail.blueprint} />
+        </div>
+      )}
+
+      {detail.assets && detail.assets.length > 0 && (
+        <div className="mb-6">
+          <h3 className="text-lg font-bold mb-3">角色资产</h3>
+          <CharacterAssetView assets={detail.assets} />
         </div>
       )}
 

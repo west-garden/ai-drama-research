@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { StoryBlueprint } from "../api";
 
 interface Props {
@@ -5,6 +6,17 @@ interface Props {
 }
 
 export default function BlueprintView({ blueprint }: Props) {
+  const [expandedEps, setExpandedEps] = useState<Set<number>>(new Set());
+
+  const toggleEp = (num: number) => {
+    setExpandedEps((prev) => {
+      const next = new Set(prev);
+      if (next.has(num)) next.delete(num);
+      else next.add(num);
+      return next;
+    });
+  };
+
   return (
     <div className="space-y-6">
       {blueprint.world_view && (
@@ -56,26 +68,85 @@ export default function BlueprintView({ blueprint }: Props) {
             {blueprint.episodes.map((ep) => (
               <div
                 key={ep.number}
-                className="bg-gray-900 border border-gray-800 rounded-lg p-3 flex items-start gap-3"
+                className="bg-gray-900 border border-gray-800 rounded-lg"
               >
-                <div className="text-xs font-mono text-gray-500 shrink-0 w-10">
-                  EP{ep.number}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-[10px] bg-blue-900/50 text-blue-400 px-1.5 py-0.5 rounded">
-                      {ep.role}
-                    </span>
-                    {ep.emotion_arc && (
-                      <span className="text-[10px] text-gray-500">
-                        {ep.emotion_arc}
+                <div
+                  className="p-3 flex items-start gap-3 cursor-pointer hover:bg-gray-800/30 transition-colors"
+                  onClick={() => ep.scenes?.length && toggleEp(ep.number)}
+                >
+                  <div className="text-xs font-mono text-gray-500 shrink-0 w-10">
+                    EP{ep.number}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-[10px] bg-blue-900/50 text-blue-400 px-1.5 py-0.5 rounded">
+                        {ep.role}
                       </span>
+                      {ep.emotion_arc && (
+                        <span className="text-[10px] text-gray-500">
+                          {ep.emotion_arc}
+                        </span>
+                      )}
+                      {ep.scenes && ep.scenes.length > 0 && (
+                        <span className="text-[10px] text-gray-600">
+                          {ep.scenes.length} 场景
+                        </span>
+                      )}
+                    </div>
+                    {ep.synopsis && (
+                      <div className="text-xs text-gray-400">
+                        {ep.synopsis}
+                      </div>
                     )}
                   </div>
-                  {ep.synopsis && (
-                    <div className="text-xs text-gray-400">{ep.synopsis}</div>
+                  {ep.scenes && ep.scenes.length > 0 && (
+                    <span className="text-gray-600 text-xs shrink-0">
+                      {expandedEps.has(ep.number) ? "▼" : "▶"}
+                    </span>
                   )}
                 </div>
+
+                {expandedEps.has(ep.number) &&
+                  ep.scenes &&
+                  ep.scenes.length > 0 && (
+                    <div className="border-t border-gray-800 px-3 pb-3 pt-2 ml-10 space-y-2">
+                      {ep.scenes.map((scene, idx) => (
+                        <div
+                          key={idx}
+                          className="bg-gray-800/40 rounded p-2 text-xs space-y-1"
+                        >
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono text-gray-500">
+                              S{idx + 1}
+                            </span>
+                            {scene.pacing && (
+                              <span className="bg-emerald-900/50 text-emerald-400 px-1.5 py-0.5 rounded text-[10px]">
+                                {scene.pacing}
+                              </span>
+                            )}
+                            {scene.character_count > 0 && (
+                              <span className="text-gray-500 text-[10px]">
+                                {scene.character_count} 角色
+                              </span>
+                            )}
+                          </div>
+                          {scene.narrative_beat && (
+                            <div className="text-gray-300">
+                              {scene.narrative_beat}
+                            </div>
+                          )}
+                          <div className="flex gap-4 text-[10px] text-gray-500">
+                            {scene.emotion_arc && (
+                              <span>情绪: {scene.emotion_arc}</span>
+                            )}
+                            {scene.setting && (
+                              <span>场景: {scene.setting}</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
               </div>
             ))}
           </div>

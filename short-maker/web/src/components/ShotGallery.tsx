@@ -40,40 +40,48 @@ export default function ShotGallery({ images, videos }: Props) {
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
               {shots
                 .sort((a, b) => a.shot_number - b.shot_number)
-                .map((shot) => (
-                  <div
-                    key={shot.shot_number}
-                    onClick={() => {
-                      setSelectedShot(shot);
-                      setShowVideo(false);
-                    }}
-                    className="border border-gray-800 rounded-lg overflow-hidden cursor-pointer hover:border-gray-600 transition-colors"
-                  >
-                    <div className="aspect-video bg-gray-900 flex items-center justify-center">
-                      <img
-                        src={shot.image_path}
-                        alt={`Shot ${shot.shot_number}`}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = "none";
-                        }}
-                      />
-                    </div>
-                    <div className="p-2 text-xs">
-                      <div className="flex justify-between items-center">
-                        <span>Shot {shot.shot_number}</span>
-                        <span
-                          className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${gradeColors[shot.grade] || "bg-gray-700"}`}
-                        >
-                          {shot.grade}
-                        </span>
+                .map((shot) => {
+                  const vid = videoMap.get(
+                    `${shot.episode_number}-${shot.shot_number}`
+                  );
+                  return (
+                    <div
+                      key={shot.shot_number}
+                      onClick={() => {
+                        setSelectedShot(shot);
+                        setShowVideo(false);
+                      }}
+                      className="border border-gray-800 rounded-lg overflow-hidden cursor-pointer hover:border-gray-600 transition-colors"
+                    >
+                      <div className="aspect-video bg-gray-900 flex items-center justify-center">
+                        <img
+                          src={shot.image_path}
+                          alt={`Shot ${shot.shot_number}`}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display =
+                              "none";
+                          }}
+                        />
                       </div>
-                      <div className="text-gray-500 mt-0.5">
-                        {shot.image_score}分
+                      <div className="p-2 text-xs">
+                        <div className="flex justify-between items-center">
+                          <span>Shot {shot.shot_number}</span>
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${gradeColors[shot.grade] || "bg-gray-700"}`}
+                          >
+                            {shot.grade}
+                          </span>
+                        </div>
+                        <div className="text-gray-500 mt-0.5">
+                          {vid
+                            ? `图片 ${shot.image_score}分 / 视频 ${vid.video_score}分`
+                            : `${shot.image_score}分`}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
             </div>
           </div>
         ))}
@@ -121,6 +129,16 @@ export default function ShotGallery({ images, videos }: Props) {
                 <span className="ml-2 text-gray-500 text-sm">
                   图片 {selectedShot.image_score}分
                 </span>
+                {(() => {
+                  const vid = videoMap.get(
+                    `${selectedShot.episode_number}-${selectedShot.shot_number}`
+                  );
+                  return vid ? (
+                    <span className="ml-2 text-gray-500 text-sm">
+                      / 视频 {vid.video_score}分
+                    </span>
+                  ) : null;
+                })()}
               </div>
               <div className="flex gap-2">
                 <button

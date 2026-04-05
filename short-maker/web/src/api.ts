@@ -71,6 +71,17 @@ export interface ShotSpec {
   content_type: string;
 }
 
+export interface Asset {
+  id: string;
+  name: string;
+  type: string;
+  scope: string;
+  project_id?: string;
+  file_path: string;
+  tags: string[];
+  metadata: Record<string, string>;
+}
+
 export interface ProjectDetail {
   project: {
     id: string;
@@ -83,6 +94,7 @@ export interface ProjectDetail {
   current_phase: string;
   next_phase: string;
   blueprint?: StoryBlueprint;
+  assets?: Asset[];
   storyboard?: ShotSpec[];
   images?: GeneratedShot[];
   videos?: GeneratedShot[];
