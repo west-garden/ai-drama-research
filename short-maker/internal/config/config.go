@@ -24,15 +24,17 @@ type LLMConfig struct {
 }
 
 type ImageConfig struct {
-	Provider string       `yaml:"provider"`
-	Gemini   GeminiConfig `yaml:"gemini"`
-	Jimeng   JimengConfig `yaml:"jimeng"`
+	Provider  string       `yaml:"provider"`
+	Providers []string     `yaml:"providers"`
+	Gemini    GeminiConfig `yaml:"gemini"`
+	Jimeng    JimengConfig `yaml:"jimeng"`
 }
 
 type VideoConfig struct {
-	Provider string       `yaml:"provider"`
-	Gemini   GeminiConfig `yaml:"gemini"`
-	Jimeng   JimengConfig `yaml:"jimeng"`
+	Provider  string       `yaml:"provider"`
+	Providers []string     `yaml:"providers"`
+	Gemini    GeminiConfig `yaml:"gemini"`
+	Jimeng    JimengConfig `yaml:"jimeng"`
 }
 
 type GeminiConfig struct {
@@ -52,6 +54,7 @@ func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
+			normalizeProviders(cfg)
 			applyDefaults(cfg)
 			return cfg, nil
 		}
@@ -62,6 +65,7 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
 
+	normalizeProviders(cfg)
 	applyDefaults(cfg)
 
 	if err := validate(cfg); err != nil {
@@ -69,6 +73,26 @@ func Load(path string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// normalizeProviders migrates the old single-provider field to the new
+// providers list for backward compatibility. If Providers is already set,
+// it takes precedence. Also keeps Provider in sync (first element) for
+// any code that still reads it.
+func normalizeProviders(cfg *Config) {
+	if len(cfg.Image.Providers) == 0 && cfg.Image.Provider != "" {
+		cfg.Image.Providers = []string{cfg.Image.Provider}
+	}
+	if len(cfg.Image.Providers) > 0 {
+		cfg.Image.Provider = cfg.Image.Providers[0]
+	}
+
+	if len(cfg.Video.Providers) == 0 && cfg.Video.Provider != "" {
+		cfg.Video.Providers = []string{cfg.Video.Provider}
+	}
+	if len(cfg.Video.Providers) > 0 {
+		cfg.Video.Provider = cfg.Video.Providers[0]
+	}
 }
 
 func applyDefaults(cfg *Config) {
@@ -81,10 +105,12 @@ func applyDefaults(cfg *Config) {
 	if cfg.LLM.Model == "" {
 		cfg.LLM.Model = "gpt-4o-mini"
 	}
-	if cfg.Image.Provider == "" {
+	if len(cfg.Image.Providers) == 0 {
+		cfg.Image.Providers = []string{"mock"}
 		cfg.Image.Provider = "mock"
 	}
-	if cfg.Video.Provider == "" {
+	if len(cfg.Video.Providers) == 0 {
+		cfg.Video.Providers = []string{"mock"}
 		cfg.Video.Provider = "mock"
 	}
 	if cfg.OutputDir == "" {
@@ -96,20 +122,28 @@ func applyDefaults(cfg *Config) {
 }
 
 func validate(cfg *Config) error {
-	if cfg.Image.Provider == "gemini" && cfg.Image.Gemini.APIKey == "" {
-		return fmt.Errorf("image.gemini.api_key is required when image.provider=gemini")
-	}
-	if cfg.Image.Provider == "jimeng" {
-		if cfg.Image.Jimeng.AccessKey == "" || cfg.Image.Jimeng.SecretKey == "" {
-			return fmt.Errorf("image.jimeng.access_key and secret_key are required when image.provider=jimeng")
+	for _, p := range cfg.Image.Providers {
+		switch p {
+		case "gemini":
+			if cfg.Image.Gemini.APIKey == "" {
+				return fmt.Errorf("image.gemini.api_key is required when image provider includes gemini")
+			}
+		case "jimeng":
+			if cfg.Image.Jimeng.AccessKey == "" || cfg.Image.Jimeng.SecretKey == "" {
+				return fmt.Errorf("image.jimeng.access_key and secret_key are required when image provider includes jimeng")
+			}
 		}
 	}
-	if cfg.Video.Provider == "gemini" && cfg.Video.Gemini.APIKey == "" {
-		return fmt.Errorf("video.gemini.api_key is required when video.provider=gemini")
-	}
-	if cfg.Video.Provider == "jimeng" {
-		if cfg.Video.Jimeng.AccessKey == "" || cfg.Video.Jimeng.SecretKey == "" {
-			return fmt.Errorf("video.jimeng.access_key and secret_key are required when video.provider=jimeng")
+	for _, p := range cfg.Video.Providers {
+		switch p {
+		case "gemini":
+			if cfg.Video.Gemini.APIKey == "" {
+				return fmt.Errorf("video.gemini.api_key is required when video provider includes gemini")
+			}
+		case "jimeng":
+			if cfg.Video.Jimeng.AccessKey == "" || cfg.Video.Jimeng.SecretKey == "" {
+				return fmt.Errorf("video.jimeng.access_key and secret_key are required when video provider includes jimeng")
+			}
 		}
 	}
 	return nil

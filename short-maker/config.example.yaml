@@ -7,7 +7,7 @@ llm:
   model: gpt-4o-mini
 
 image:
-  provider: mock                   # gemini | jimeng | mock
+  providers: [mock]               # ordered list: gemini, jimeng, mock (first = default)
   gemini:
     api_key: ""                    # your Gemini API key
     model: imagen-4.0-generate-001
@@ -17,7 +17,7 @@ image:
     req_key: jimeng_t2i_v40
 
 video:
-  provider: mock                   # gemini | jimeng | mock
+  providers: [mock]               # ordered list: gemini, jimeng, mock (first = default)
   gemini:
     api_key: ""                    # your Gemini API key
     model: veo-3.1-generate-preview

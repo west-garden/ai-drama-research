@@ -142,29 +142,32 @@ func buildAgents(cfg *config.Config) (map[agent.Phase]agent.Agent, func(), error
 		agents[agent.PhaseStoryboard] = agent.NewStoryboardAgent(llmClient, cfg.LLM.Model, nil)
 	}
 
-	// Image adapter
-	var imageAdapter router.ModelAdapter
-	switch cfg.Image.Provider {
-	case "gemini":
-		imageAdapter = router.NewGeminiImageAdapter(cfg.Image.Gemini.APIKey, cfg.Image.Gemini.Model)
-	case "jimeng":
-		imageAdapter = router.NewJimengImageAdapter(cfg.Image.Jimeng.AccessKey, cfg.Image.Jimeng.SecretKey, cfg.Image.Jimeng.ReqKey)
-	default:
-		imageAdapter = router.NewMockImageAdapter()
+	// Image adapters — register one per configured provider
+	var adapters []router.ModelAdapter
+	for _, p := range cfg.Image.Providers {
+		switch p {
+		case "gemini":
+			adapters = append(adapters, router.NewGeminiImageAdapter(cfg.Image.Gemini.APIKey, cfg.Image.Gemini.Model))
+		case "jimeng":
+			adapters = append(adapters, router.NewJimengImageAdapter(cfg.Image.Jimeng.AccessKey, cfg.Image.Jimeng.SecretKey, cfg.Image.Jimeng.ReqKey))
+		default:
+			adapters = append(adapters, router.NewMockImageAdapter())
+		}
 	}
 
-	// Video adapter
-	var videoAdapter router.ModelAdapter
-	switch cfg.Video.Provider {
-	case "gemini":
-		videoAdapter = router.NewGeminiVideoAdapter(cfg.Video.Gemini.APIKey, cfg.Video.Gemini.Model)
-	case "jimeng":
-		videoAdapter = router.NewJimengVideoAdapter(cfg.Video.Jimeng.AccessKey, cfg.Video.Jimeng.SecretKey, cfg.Video.Jimeng.ReqKey)
-	default:
-		videoAdapter = router.NewMockVideoAdapter()
+	// Video adapters — register one per configured provider
+	for _, p := range cfg.Video.Providers {
+		switch p {
+		case "gemini":
+			adapters = append(adapters, router.NewGeminiVideoAdapter(cfg.Video.Gemini.APIKey, cfg.Video.Gemini.Model))
+		case "jimeng":
+			adapters = append(adapters, router.NewJimengVideoAdapter(cfg.Video.Jimeng.AccessKey, cfg.Video.Jimeng.SecretKey, cfg.Video.Jimeng.ReqKey))
+		default:
+			adapters = append(adapters, router.NewMockVideoAdapter())
+		}
 	}
 
-	modelRouter := router.NewModelRouter(imageAdapter, videoAdapter)
+	modelRouter := router.NewModelRouter(adapters...)
 	checker := quality.NewMockChecker()
 
 	agents[agent.PhaseImageGeneration] = agent.NewImageGenAgent(modelRouter, checker, cfg.OutputDir)

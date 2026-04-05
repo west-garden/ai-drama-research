@@ -42,6 +42,9 @@ strategies_path: ./strats.json
 	if cfg.Image.Provider != "gemini" {
 		t.Errorf("Image.Provider = %q, want %q", cfg.Image.Provider, "gemini")
 	}
+	if len(cfg.Image.Providers) != 1 || cfg.Image.Providers[0] != "gemini" {
+		t.Errorf("Image.Providers = %v, want [gemini]", cfg.Image.Providers)
+	}
 	if cfg.Video.Jimeng.AccessKey != "AK-test" {
 		t.Errorf("Video.Jimeng.AccessKey = %q, want %q", cfg.Video.Jimeng.AccessKey, "AK-test")
 	}
@@ -71,8 +74,14 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.Image.Provider != "mock" {
 		t.Errorf("Image.Provider default = %q, want %q", cfg.Image.Provider, "mock")
 	}
+	if len(cfg.Image.Providers) != 1 || cfg.Image.Providers[0] != "mock" {
+		t.Errorf("Image.Providers default = %v, want [mock]", cfg.Image.Providers)
+	}
 	if cfg.Video.Provider != "mock" {
 		t.Errorf("Video.Provider default = %q, want %q", cfg.Video.Provider, "mock")
+	}
+	if len(cfg.Video.Providers) != 1 || cfg.Video.Providers[0] != "mock" {
+		t.Errorf("Video.Providers default = %v, want [mock]", cfg.Video.Providers)
 	}
 	if cfg.OutputDir != "./output" {
 		t.Errorf("OutputDir default = %q", cfg.OutputDir)
@@ -124,5 +133,97 @@ video:
 	_, err := Load(path)
 	if err == nil {
 		t.Fatal("expected validation error for jimeng without secret_key")
+	}
+}
+
+func TestLoad_Providers_NewFormat(t *testing.T) {
+	yaml := `
+image:
+  providers: [gemini, jimeng]
+  gemini:
+    api_key: AIza-test
+    model: imagen-4.0-generate-001
+  jimeng:
+    access_key: AK-test
+    secret_key: SK-test
+    req_key: jimeng_t2i_v40
+video:
+  providers: [jimeng]
+  jimeng:
+    access_key: AK-test
+    secret_key: SK-test
+    req_key: jimeng_vgfm_i2v_l20
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	os.WriteFile(path, []byte(yaml), 0644)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Image.Providers) != 2 {
+		t.Fatalf("Image.Providers length = %d, want 2", len(cfg.Image.Providers))
+	}
+	if cfg.Image.Providers[0] != "gemini" || cfg.Image.Providers[1] != "jimeng" {
+		t.Errorf("Image.Providers = %v, want [gemini jimeng]", cfg.Image.Providers)
+	}
+	// Provider should be first element
+	if cfg.Image.Provider != "gemini" {
+		t.Errorf("Image.Provider = %q, want %q", cfg.Image.Provider, "gemini")
+	}
+	if len(cfg.Video.Providers) != 1 || cfg.Video.Providers[0] != "jimeng" {
+		t.Errorf("Video.Providers = %v, want [jimeng]", cfg.Video.Providers)
+	}
+}
+
+func TestLoad_Providers_BackwardCompat(t *testing.T) {
+	yaml := `
+image:
+  provider: gemini
+  gemini:
+    api_key: AIza-test
+    model: imagen-4.0-generate-001
+video:
+  provider: jimeng
+  jimeng:
+    access_key: AK-test
+    secret_key: SK-test
+    req_key: jimeng_vgfm_i2v_l20
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	os.WriteFile(path, []byte(yaml), 0644)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	// Old provider: field should be normalized into providers: list
+	if len(cfg.Image.Providers) != 1 || cfg.Image.Providers[0] != "gemini" {
+		t.Errorf("Image.Providers = %v, want [gemini]", cfg.Image.Providers)
+	}
+	if len(cfg.Video.Providers) != 1 || cfg.Video.Providers[0] != "jimeng" {
+		t.Errorf("Video.Providers = %v, want [jimeng]", cfg.Video.Providers)
+	}
+}
+
+func TestLoad_Providers_ValidationAll(t *testing.T) {
+	// Both providers listed but jimeng missing secret_key
+	yaml := `
+image:
+  providers: [gemini, jimeng]
+  gemini:
+    api_key: AIza-test
+  jimeng:
+    access_key: AK-test
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	os.WriteFile(path, []byte(yaml), 0644)
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected validation error when jimeng in providers list is missing secret_key")
 	}
 }
