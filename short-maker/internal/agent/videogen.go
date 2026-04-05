@@ -52,11 +52,12 @@ func (a *VideoGenAgent) Run(ctx context.Context, state *PipelineState) (*Pipelin
 			return nil, fmt.Errorf("create output dir: %w", err)
 		}
 
+		srcImagePath := shotImagePath(a.outputDir, state.Project.ID, img.EpisodeNum, img.ShotNumber)
 		req := router.GenerateRequest{
 			Prompt:      shotSpec.Prompt,
 			Style:       string(state.Project.Style),
 			CameraMove:  shotSpec.CameraMove,
-			SourceImage: img.ImagePath,
+			SourceImage: srcImagePath,
 			OutputPath:  outPath,
 		}
 
@@ -97,7 +98,7 @@ func (a *VideoGenAgent) Run(ctx context.Context, state *PipelineState) (*Pipelin
 			ShotNumber: img.ShotNumber,
 			EpisodeNum: img.EpisodeNum,
 			ImagePath:  img.ImagePath,
-			VideoPath:  outPath,
+			VideoPath:  shotVideoURL(state.Project.ID, img.EpisodeNum, img.ShotNumber),
 			Grade:      grade,
 			ImageScore: img.ImageScore,
 			VideoScore: score,
@@ -110,4 +111,9 @@ func (a *VideoGenAgent) Run(ctx context.Context, state *PipelineState) (*Pipelin
 
 func shotVideoPath(outputDir, projectID string, episodeNum, shotNum int) string {
 	return filepath.Join(outputDir, projectID, fmt.Sprintf("ep%02d", episodeNum), fmt.Sprintf("shot%03d.mp4", shotNum))
+}
+
+// shotVideoURL returns the URL path for serving a video via the /output/ file server.
+func shotVideoURL(projectID string, episodeNum, shotNum int) string {
+	return fmt.Sprintf("/output/%s/ep%02d/shot%03d.mp4", projectID, episodeNum, shotNum)
 }

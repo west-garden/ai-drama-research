@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -81,19 +82,18 @@ func TestImageGenAgent_Run(t *testing.T) {
 	if img1.EpisodeNum != 1 {
 		t.Errorf("expected episode 1, got %d", img1.EpisodeNum)
 	}
-	if img1.ImagePath == "" {
-		t.Error("expected non-empty image path")
+	expectedURL := fmt.Sprintf("/output/%s/ep01/shot001.png", project.ID)
+	if img1.ImagePath != expectedURL {
+		t.Errorf("expected image URL path %q, got %q", expectedURL, img1.ImagePath)
 	}
 	if img1.ImageScore != 90 {
 		t.Errorf("expected image score 90 (from mock checker), got %d", img1.ImageScore)
 	}
 
-	if _, err := os.Stat(img1.ImagePath); err != nil {
-		t.Errorf("image file not found: %v", err)
-	}
-
-	if filepath.Ext(img1.ImagePath) != ".png" {
-		t.Errorf("expected .png extension, got %s", filepath.Ext(img1.ImagePath))
+	// Verify the actual file exists on disk at the filesystem path
+	fsPath := filepath.Join(outputDir, project.ID, "ep01", "shot001.png")
+	if _, err := os.Stat(fsPath); err != nil {
+		t.Errorf("image file not found at %s: %v", fsPath, err)
 	}
 }
 

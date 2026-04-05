@@ -3,7 +3,9 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/west-garden/short-maker/internal/domain"
@@ -532,16 +534,18 @@ func TestIntegration_FullPipelineWithGeneration(t *testing.T) {
 		t.Fatalf("expected 2 videos, got %d", len(result.Videos))
 	}
 
-	// Verify image files exist
+	// Verify image files exist on disk (ImagePath is now a URL path like /output/proj.../shot001.png)
 	for _, img := range result.Images {
-		if _, err := os.Stat(img.ImagePath); err != nil {
+		fsPath := filepath.Join(outputDir, project.ID, fmt.Sprintf("ep%02d", img.EpisodeNum), fmt.Sprintf("shot%03d.png", img.ShotNumber))
+		if _, err := os.Stat(fsPath); err != nil {
 			t.Errorf("image file not found for shot %d: %v", img.ShotNumber, err)
 		}
 	}
 
-	// Verify video files exist
+	// Verify video files exist on disk (VideoPath is now a URL path)
 	for _, vid := range result.Videos {
-		if _, err := os.Stat(vid.VideoPath); err != nil {
+		fsPath := filepath.Join(outputDir, project.ID, fmt.Sprintf("ep%02d", vid.EpisodeNum), fmt.Sprintf("shot%03d.mp4", vid.ShotNumber))
+		if _, err := os.Stat(fsPath); err != nil {
 			t.Errorf("video file not found for shot %d: %v", vid.ShotNumber, err)
 		}
 	}

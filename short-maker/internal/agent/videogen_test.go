@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -93,10 +94,14 @@ func TestVideoGenAgent_Run(t *testing.T) {
 		t.Errorf("expected ImagePath carried from input, got %s", vid1.ImagePath)
 	}
 
-	if _, err := os.Stat(vid1.VideoPath); err != nil {
-		t.Errorf("video file not found: %v", err)
+	expectedVideoURL := fmt.Sprintf("/output/%s/ep01/shot001.mp4", project.ID)
+	if vid1.VideoPath != expectedVideoURL {
+		t.Errorf("expected video URL path %q, got %q", expectedVideoURL, vid1.VideoPath)
 	}
-	if filepath.Ext(vid1.VideoPath) != ".mp4" {
-		t.Errorf("expected .mp4 extension, got %s", filepath.Ext(vid1.VideoPath))
+
+	// Verify the actual file exists on disk at the filesystem path
+	fsPath := filepath.Join(outputDir, project.ID, "ep01", "shot001.mp4")
+	if _, err := os.Stat(fsPath); err != nil {
+		t.Errorf("video file not found at %s: %v", fsPath, err)
 	}
 }

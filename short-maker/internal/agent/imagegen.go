@@ -94,7 +94,7 @@ func (a *ImageGenAgent) Run(ctx context.Context, state *PipelineState) (*Pipelin
 		state.Images = append(state.Images, &GeneratedShot{
 			ShotNumber: shot.ShotNumber,
 			EpisodeNum: shot.EpisodeNumber,
-			ImagePath:  outPath,
+			ImagePath:  shotImageURL(state.Project.ID, shot.EpisodeNumber, shot.ShotNumber),
 			Grade:      grade,
 			ImageScore: score,
 		})
@@ -135,4 +135,9 @@ func findCharacterAssets(assets []*domain.Asset, characterRefs []string) []*doma
 
 func shotImagePath(outputDir, projectID string, episodeNum, shotNum int) string {
 	return filepath.Join(outputDir, projectID, fmt.Sprintf("ep%02d", episodeNum), fmt.Sprintf("shot%03d.png", shotNum))
+}
+
+// shotImageURL returns the URL path for serving an image via the /output/ file server.
+func shotImageURL(projectID string, episodeNum, shotNum int) string {
+	return fmt.Sprintf("/output/%s/ep%02d/shot%03d.png", projectID, episodeNum, shotNum)
 }
