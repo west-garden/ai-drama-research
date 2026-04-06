@@ -8,12 +8,20 @@ import (
 )
 
 type Config struct {
-	LLM            LLMConfig   `yaml:"llm"`
-	Image          ImageConfig `yaml:"image"`
-	Video          VideoConfig `yaml:"video"`
-	OutputDir      string      `yaml:"output_dir"`
-	DBPath         string      `yaml:"db_path"`
-	StrategiesPath string      `yaml:"strategies_path"`
+	Providers      map[string]ProviderConfig `yaml:"providers"`
+	LLM            LLMConfig                 `yaml:"llm"`
+	Image          ImageConfig               `yaml:"image"`
+	Video          VideoConfig               `yaml:"video"`
+	OutputDir      string                    `yaml:"output_dir"`
+	DBPath         string                    `yaml:"db_path"`
+	StrategiesPath string                    `yaml:"strategies_path"`
+}
+
+type ProviderConfig struct {
+	APIKey    string `yaml:"api_key"`
+	Proxy     string `yaml:"proxy"`
+	AccessKey string `yaml:"access_key"`
+	SecretKey string `yaml:"secret_key"`
 }
 
 type LLMConfig struct {
@@ -57,6 +65,7 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			normalizeProviders(cfg)
+			resolveProviders(cfg)
 			applyDefaults(cfg)
 			return cfg, nil
 		}
@@ -68,6 +77,7 @@ func Load(path string) (*Config, error) {
 	}
 
 	normalizeProviders(cfg)
+	resolveProviders(cfg)
 	applyDefaults(cfg)
 
 	if err := validate(cfg); err != nil {
@@ -94,6 +104,57 @@ func normalizeProviders(cfg *Config) {
 	}
 	if len(cfg.Video.Providers) > 0 {
 		cfg.Video.Provider = cfg.Video.Providers[0]
+	}
+}
+
+// resolveProviders inherits credentials from the top-level providers map
+// into LLM, image, and video sections when their inline keys are empty.
+// Inline values always take precedence (are never overwritten).
+func resolveProviders(cfg *Config) {
+	if len(cfg.Providers) == 0 {
+		return
+	}
+
+	// LLM: inherit from provider named by llm.provider
+	if p, ok := cfg.Providers[cfg.LLM.Provider]; ok {
+		if cfg.LLM.APIKey == "" {
+			cfg.LLM.APIKey = p.APIKey
+		}
+		if cfg.LLM.Proxy == "" {
+			cfg.LLM.Proxy = p.Proxy
+		}
+	}
+
+	// Image/Video Gemini
+	if p, ok := cfg.Providers["gemini"]; ok {
+		if cfg.Image.Gemini.APIKey == "" {
+			cfg.Image.Gemini.APIKey = p.APIKey
+		}
+		if cfg.Image.Gemini.Proxy == "" {
+			cfg.Image.Gemini.Proxy = p.Proxy
+		}
+		if cfg.Video.Gemini.APIKey == "" {
+			cfg.Video.Gemini.APIKey = p.APIKey
+		}
+		if cfg.Video.Gemini.Proxy == "" {
+			cfg.Video.Gemini.Proxy = p.Proxy
+		}
+	}
+
+	// Image/Video Jimeng
+	if p, ok := cfg.Providers["jimeng"]; ok {
+		if cfg.Image.Jimeng.AccessKey == "" {
+			cfg.Image.Jimeng.AccessKey = p.AccessKey
+		}
+		if cfg.Image.Jimeng.SecretKey == "" {
+			cfg.Image.Jimeng.SecretKey = p.SecretKey
+		}
+		if cfg.Video.Jimeng.AccessKey == "" {
+			cfg.Video.Jimeng.AccessKey = p.AccessKey
+		}
+		if cfg.Video.Jimeng.SecretKey == "" {
+			cfg.Video.Jimeng.SecretKey = p.SecretKey
+		}
 	}
 }
 

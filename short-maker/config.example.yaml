@@ -1,31 +1,32 @@
 # config.example.yaml — copy to config.yaml and fill in your API keys
 
+# Define provider credentials once; LLM/image/video inherit automatically.
+# Inline api_key/access_key in a section always takes precedence over providers.
+providers:
+  gemini:
+    api_key: ""                      # your Gemini API key
+    proxy: ""                        # optional HTTP proxy
+  jimeng:
+    access_key: ""                   # your Volcengine AK
+    secret_key: ""                   # your Volcengine SK
+
 llm:
-  provider: openai
-  api_key: ""                      # set your key here, or use OPENAI_API_KEY env var
-  base_url: https://api.openai.com/v1
-  model: gpt-4o-mini
+  provider: gemini                   # inherits api_key + proxy from providers.gemini
+  base_url: https://generativelanguage.googleapis.com/v1beta/openai
+  model: gemini-2.5-flash
 
 image:
-  providers: [mock]               # ordered list: gemini, jimeng, mock (first = default)
+  providers: [gemini, jimeng]        # ordered list (first = default); use [mock] to skip
   gemini:
-    api_key: ""                    # your Gemini API key
     model: imagen-4.0-generate-001
   jimeng:
-    access_key: ""                 # your Volcengine AK
-    secret_key: ""                 # your Volcengine SK
     req_key: jimeng_t2i_v40
 
 video:
-  providers: [mock]               # ordered list: gemini, jimeng, mock (first = default)
+  providers: [gemini]                # ordered list; use [mock] to skip
   gemini:
-    api_key: ""                    # your Gemini API key
-    model: veo-3.1-generate-preview
-  jimeng:
-    access_key: ""                 # your Volcengine AK
-    secret_key: ""                 # your Volcengine SK
-    req_key: jimeng_vgfm_i2v_l20
+    model: veo-3.1-lite-generate-preview
 
 output_dir: ./output
 db_path: ./shortmaker.db
-strategies_path: ""               # path to strategies.json (empty = no strategies)
+strategies_path: ""                  # path to strategies.json (empty = no strategies)

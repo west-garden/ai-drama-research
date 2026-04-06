@@ -208,6 +208,110 @@ video:
 	}
 }
 
+func TestLoad_SharedProviders(t *testing.T) {
+	yaml := `
+providers:
+  gemini:
+    api_key: AIza-shared
+    proxy: http://proxy:8080
+  jimeng:
+    access_key: AK-shared
+    secret_key: SK-shared
+image:
+  providers: [gemini, jimeng]
+  gemini:
+    model: imagen-4.0-generate-001
+  jimeng:
+    req_key: jimeng_t2i_v40
+video:
+  providers: [gemini]
+  gemini:
+    model: veo-3.1-lite-generate-preview
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	os.WriteFile(path, []byte(yaml), 0644)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Image.Gemini.APIKey != "AIza-shared" {
+		t.Errorf("Image.Gemini.APIKey = %q, want %q", cfg.Image.Gemini.APIKey, "AIza-shared")
+	}
+	if cfg.Image.Gemini.Proxy != "http://proxy:8080" {
+		t.Errorf("Image.Gemini.Proxy = %q, want %q", cfg.Image.Gemini.Proxy, "http://proxy:8080")
+	}
+	if cfg.Image.Jimeng.AccessKey != "AK-shared" {
+		t.Errorf("Image.Jimeng.AccessKey = %q, want %q", cfg.Image.Jimeng.AccessKey, "AK-shared")
+	}
+	if cfg.Image.Jimeng.SecretKey != "SK-shared" {
+		t.Errorf("Image.Jimeng.SecretKey = %q, want %q", cfg.Image.Jimeng.SecretKey, "SK-shared")
+	}
+	if cfg.Video.Gemini.APIKey != "AIza-shared" {
+		t.Errorf("Video.Gemini.APIKey = %q, want %q", cfg.Video.Gemini.APIKey, "AIza-shared")
+	}
+	if cfg.Video.Gemini.Proxy != "http://proxy:8080" {
+		t.Errorf("Video.Gemini.Proxy = %q, want %q", cfg.Video.Gemini.Proxy, "http://proxy:8080")
+	}
+}
+
+func TestLoad_InlineOverridesProvider(t *testing.T) {
+	yaml := `
+providers:
+  gemini:
+    api_key: AIza-shared
+    proxy: http://proxy:8080
+image:
+  providers: [gemini]
+  gemini:
+    api_key: AIza-inline
+    model: imagen-4.0-generate-001
+    proxy: http://inline-proxy:9090
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	os.WriteFile(path, []byte(yaml), 0644)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Image.Gemini.APIKey != "AIza-inline" {
+		t.Errorf("Image.Gemini.APIKey = %q, want %q (inline should override provider)", cfg.Image.Gemini.APIKey, "AIza-inline")
+	}
+	if cfg.Image.Gemini.Proxy != "http://inline-proxy:9090" {
+		t.Errorf("Image.Gemini.Proxy = %q, want %q (inline should override provider)", cfg.Image.Gemini.Proxy, "http://inline-proxy:9090")
+	}
+}
+
+func TestLoad_LLMInheritsFromProvider(t *testing.T) {
+	yaml := `
+providers:
+  gemini:
+    api_key: AIza-shared
+    proxy: http://proxy:8080
+llm:
+  provider: gemini
+  base_url: https://generativelanguage.googleapis.com/v1beta/openai
+  model: gemini-2.5-flash
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	os.WriteFile(path, []byte(yaml), 0644)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.LLM.APIKey != "AIza-shared" {
+		t.Errorf("LLM.APIKey = %q, want %q", cfg.LLM.APIKey, "AIza-shared")
+	}
+	if cfg.LLM.Proxy != "http://proxy:8080" {
+		t.Errorf("LLM.Proxy = %q, want %q", cfg.LLM.Proxy, "http://proxy:8080")
+	}
+}
+
 func TestLoad_Providers_ValidationAll(t *testing.T) {
 	// Both providers listed but jimeng missing secret_key
 	yaml := `
