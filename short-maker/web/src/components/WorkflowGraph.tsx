@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -6,6 +6,7 @@ import {
   type Edge,
   type NodeTypes,
   type NodeProps,
+  type ReactFlowInstance,
   Handle,
   Position,
   useNodesState,
@@ -333,15 +334,41 @@ export default function WorkflowGraph({
     [onSelectNode]
   );
 
+  // --- Ctrl/Cmd + scroll = zoom, plain scroll = page scroll ---
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [rfInstance, setRfInstance] = useState<ReactFlowInstance | null>(null);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || !rfInstance) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const viewport = rfInstance.getViewport();
+        const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+        const newZoom = Math.min(1.5, Math.max(0.3, viewport.zoom * zoomFactor));
+        rfInstance.setViewport({ ...viewport, zoom: newZoom });
+      }
+      // else: let the event bubble up for normal page scrolling
+    };
+
+    el.addEventListener("wheel", handleWheel, { passive: false });
+    return () => el.removeEventListener("wheel", handleWheel);
+  }, [rfInstance]);
+
   return (
-    <div className="border-y border-gray-700 bg-gray-950 overflow-hidden h-full">
+    <div ref={containerRef} className="border-y border-gray-700 bg-gray-950 overflow-hidden h-full relative">
       <ReactFlow
         nodes={rfNodes}
         edges={rfEdges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={onNodeClick}
+        onInit={setRfInstance}
         nodeTypes={nodeTypes}
+        zoomOnScroll={false}
+        preventScrolling={false}
         fitView
         fitViewOptions={{ padding: 0.2 }}
         minZoom={0.3}
@@ -350,6 +377,9 @@ export default function WorkflowGraph({
       >
         <Background color="#374151" gap={20} />
       </ReactFlow>
+      <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[11px] text-gray-600 pointer-events-none">
+        Ctrl + 滚轮缩放
+      </div>
     </div>
   );
 }
