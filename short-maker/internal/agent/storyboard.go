@@ -36,6 +36,9 @@ func (a *StoryboardAgent) Run(ctx context.Context, state *PipelineState) (*Pipel
 		nameToID[ch.Name] = ch.ID
 	}
 
+	// Clear previous storyboard to avoid duplicate shot numbers on re-run
+	state.Storyboard = nil
+
 	shotCounter := 0
 	for _, ep := range state.Blueprint.Episodes {
 		log.Printf("[storyboard-agent] episode %d (%s): %d scenes", ep.Number, ep.Role, len(ep.Scenes))
