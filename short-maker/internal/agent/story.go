@@ -23,7 +23,7 @@ func NewStoryAgent(llmClient llm.Client, model string) *StoryAgent {
 func (a *StoryAgent) Phase() Phase { return PhaseStoryUnderstanding }
 
 func (a *StoryAgent) Run(ctx context.Context, state *PipelineState) (*PipelineState, error) {
-	systemPrompt := buildStorySystemPrompt()
+	systemPrompt := buildStorySystemPrompt(state.Project.PromptLanguage)
 	userPrompt := buildStoryUserPrompt(state.Script, string(state.Project.Style), state.Project.EpisodeCount)
 
 	log.Printf("[story-agent] sending request to LLM (model=%s, maxTokens=65536)", a.model)
@@ -51,8 +51,8 @@ func (a *StoryAgent) Run(ctx context.Context, state *PipelineState) (*PipelineSt
 	return state, nil
 }
 
-func buildStorySystemPrompt() string {
-	return `You are a script analysis agent for an AI short drama production system.
+func buildStorySystemPrompt(promptLanguage string) string {
+	base := `You are a script analysis agent for an AI short drama production system.
 Analyze the provided script and output a structured JSON representation.
 
 Output ONLY valid JSON with this exact schema (no other text):
@@ -101,6 +101,15 @@ Requirements:
 - Every episode must have at least one scene
 - Traits should be personality traits, not physical descriptions
 - Scene pacing: "fast" for action/conflict, "slow" for setup/emotion, "medium" for dialogue`
+
+	if promptLanguage == "zh" {
+		base += `
+
+IMPORTANT: All text values (world_view, synopsis, emotion_arc, narrative_beat, description, traits, relationship type, setting) MUST be in Chinese (中文).
+Only JSON keys should be in English.`
+	}
+
+	return base
 }
 
 func buildStoryUserPrompt(script, style string, episodeCount int) string {

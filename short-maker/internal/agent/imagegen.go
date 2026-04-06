@@ -39,7 +39,10 @@ func (a *ImageGenAgent) Run(ctx context.Context, state *PipelineState) (*Pipelin
 		outPath := shotImagePath(a.outputDir, state.Project.ID, shot.EpisodeNumber, shot.ShotNumber)
 
 		if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {
-			return nil, fmt.Errorf("create output dir: %w", err)
+			errMsg := fmt.Sprintf("create output dir for shot %d: %v", shot.ShotNumber, err)
+			log.Printf("[image-gen] %s", errMsg)
+			state.Errors = append(state.Errors, errMsg)
+			continue
 		}
 
 		var charRefPaths []string
@@ -57,6 +60,7 @@ func (a *ImageGenAgent) Run(ctx context.Context, state *PipelineState) (*Pipelin
 		}
 
 		var lastReport *quality.QualityReport
+		shotFailed := false
 		for attempt := 0; attempt <= maxRetries; attempt++ {
 			resp, err := a.router.Generate(ctx, grade, string(state.Project.Style), router.ModelTypeImage, req)
 			if err != nil {
@@ -64,12 +68,20 @@ func (a *ImageGenAgent) Run(ctx context.Context, state *PipelineState) (*Pipelin
 					log.Printf("[image-gen] shot %d generate failed, retrying (%d/%d): %v", shot.ShotNumber, attempt+1, maxRetries, err)
 					continue
 				}
-				return nil, fmt.Errorf("generate image for shot %d: %w", shot.ShotNumber, err)
+				errMsg := fmt.Sprintf("generate image for ep%d shot %d failed after %d attempts: %v", shot.EpisodeNumber, shot.ShotNumber, maxRetries+1, err)
+				log.Printf("[image-gen] %s", errMsg)
+				state.Errors = append(state.Errors, errMsg)
+				shotFailed = true
+				break
 			}
 
 			report, err := a.checker.Check(ctx, resp.FilePath, shot, charAssets)
 			if err != nil {
-				return nil, fmt.Errorf("quality check shot %d: %w", shot.ShotNumber, err)
+				errMsg := fmt.Sprintf("quality check ep%d shot %d: %v", shot.EpisodeNumber, shot.ShotNumber, err)
+				log.Printf("[image-gen] %s", errMsg)
+				state.Errors = append(state.Errors, errMsg)
+				shotFailed = true
+				break
 			}
 			lastReport = report
 
@@ -86,6 +98,10 @@ func (a *ImageGenAgent) Run(ctx context.Context, state *PipelineState) (*Pipelin
 			}
 		}
 
+		if shotFailed {
+			continue
+		}
+
 		score := 0
 		if lastReport != nil {
 			score = lastReport.TotalScore
@@ -100,7 +116,7 @@ func (a *ImageGenAgent) Run(ctx context.Context, state *PipelineState) (*Pipelin
 		})
 	}
 
-	log.Printf("[image-gen] generated %d images", len(state.Images))
+	log.Printf("[image-gen] generated %d images (%d errors)", len(state.Images), len(state.Errors))
 	return state, nil
 }
 

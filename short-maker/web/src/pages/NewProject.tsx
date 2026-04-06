@@ -7,6 +7,7 @@ export default function NewProject() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
   const [style, setStyle] = useState("manga");
+  const [promptLanguage, setPromptLanguage] = useState("zh");
   const [episodes, setEpisodes] = useState(10);
   const [fileName, setFileName] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -28,6 +29,7 @@ export default function NewProject() {
       form.append("script", file);
       form.append("name", name || file.name.replace(/\.\w+$/, ""));
       form.append("style", style);
+      form.append("prompt_language", promptLanguage);
       form.append("episodes", String(episodes));
 
       const project = await createProject(form);
@@ -85,6 +87,20 @@ export default function NewProject() {
             <option value="manga">manga（漫画）</option>
             <option value="3d">3D</option>
             <option value="live_action">live_action（真人）</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm text-gray-400 mb-1">
+            提示词语言
+          </label>
+          <select
+            value={promptLanguage}
+            onChange={(e) => setPromptLanguage(e.target.value)}
+            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white"
+          >
+            <option value="zh">中文（推荐中文剧本）</option>
+            <option value="en">English</option>
           </select>
         </div>
 

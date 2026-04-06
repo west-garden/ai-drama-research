@@ -23,24 +23,37 @@ const (
 	StatusFailed     Status = "failed"
 )
 
+// NodeStatus represents the execution status of a workflow node.
+type NodeStatus string
+
+const (
+	NodeStatusPending   NodeStatus = "pending"
+	NodeStatusRunning   NodeStatus = "running"
+	NodeStatusCompleted NodeStatus = "completed"
+	NodeStatusFailed    NodeStatus = "failed"
+	NodeStatusSkipped   NodeStatus = "skipped"
+)
+
 type Project struct {
-	ID           string     `json:"id"`
-	Name         string     `json:"name"`
-	Style        Style      `json:"style"`
-	EpisodeCount int        `json:"episode_count"`
-	Status       Status     `json:"status"`
-	Episodes     []*Episode `json:"episodes"`
-	CreatedAt    time.Time  `json:"created_at"`
+	ID             string     `json:"id"`
+	Name           string     `json:"name"`
+	Style          Style      `json:"style"`
+	EpisodeCount   int        `json:"episode_count"`
+	PromptLanguage string     `json:"prompt_language"` // "en" | "zh", default "en"
+	Status         Status     `json:"status"`
+	Episodes       []*Episode `json:"episodes"`
+	CreatedAt      time.Time  `json:"created_at"`
 }
 
 func NewProject(name string, style Style, episodeCount int) *Project {
 	return &Project{
-		ID:           generateID("proj"),
-		Name:         name,
-		Style:        style,
-		EpisodeCount: episodeCount,
-		Status:       StatusCreated,
-		CreatedAt:    time.Now(),
+		ID:             generateID("proj"),
+		Name:           name,
+		Style:          style,
+		EpisodeCount:   episodeCount,
+		PromptLanguage: "en",
+		Status:         StatusCreated,
+		CreatedAt:      time.Now(),
 	}
 }
 

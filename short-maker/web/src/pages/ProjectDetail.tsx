@@ -2,78 +2,58 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import {
   getProject,
+  getWorkflow,
   runPhase,
   subscribeToEvents,
   type ProjectDetail as ProjectDetailType,
+  type WorkflowResponse,
   type SSEEvent,
 } from "../api";
-import PipelineProgress from "../components/PipelineProgress";
+import WorkflowGraph from "../components/WorkflowGraph";
 import BlueprintView from "../components/BlueprintView";
 import CharacterAssetView from "../components/CharacterAssetView";
 import StoryboardView from "../components/StoryboardView";
 import ShotGallery from "../components/ShotGallery";
 
-const PHASE_ORDER = [
-  "story_understanding",
-  "character_asset",
-  "storyboard",
-  "image_generation",
-  "video_generation",
-];
-
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
   const [detail, setDetail] = useState<ProjectDetailType | null>(null);
+  const [workflow, setWorkflow] = useState<WorkflowResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [completedPhases, setCompletedPhases] = useState<Set<string>>(
-    new Set()
-  );
-  const [pipelineStatus, setPipelineStatus] = useState("unknown");
-  const [currentPhase, setCurrentPhase] = useState("");
-  const [nextPhase, setNextPhase] = useState("");
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState("");
+  const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
 
-  const refreshProject = useCallback(async () => {
+  const refreshData = useCallback(async () => {
     if (!id) return;
     try {
       const d = await getProject(id);
       setDetail(d);
-      setPipelineStatus(d.pipeline_status);
-      setCurrentPhase(d.current_phase);
-      setNextPhase(d.next_phase || "");
-
-      if (d.pipeline_status === "completed") {
-        setCompletedPhases(new Set(PHASE_ORDER));
-      } else if (d.current_phase) {
-        const idx = PHASE_ORDER.indexOf(d.current_phase);
-        if (idx >= 0) {
-          setCompletedPhases(new Set(PHASE_ORDER.slice(0, idx + 1)));
-        }
-      }
-
-      if (d.pipeline_status === "running") {
-        setIsRunning(true);
-      } else {
-        setIsRunning(false);
-      }
+      setIsRunning(d.pipeline_status === "running");
     } catch (err: any) {
-      console.error(err);
+      console.error("Failed to load project:", err);
+      return;
+    }
+    try {
+      const w = await getWorkflow(id);
+      setWorkflow(w);
+    } catch (err: any) {
+      console.error("Failed to load workflow:", err);
     }
   }, [id]);
 
   useEffect(() => {
-    refreshProject().finally(() => setLoading(false));
-  }, [refreshProject]);
+    refreshData().finally(() => setLoading(false));
+  }, [refreshData]);
 
-  const handleRunPhase = async (phase: string, episode?: number) => {
+  const handleRunNode = async (nodeId: string) => {
     if (!id) return;
     setError("");
     setIsRunning(true);
 
     try {
-      await runPhase(id, { phase, episode });
+      await runPhase(id, { phase: nodeId });
 
       // Subscribe to SSE for this run
       if (esRef.current) {
@@ -81,36 +61,29 @@ export default function ProjectDetail() {
       }
 
       const es = subscribeToEvents(id, (event: SSEEvent) => {
-        if (event.type === "phase_complete" && event.phase) {
-          setCompletedPhases((prev) => new Set([...prev, event.phase!]));
-          setCurrentPhase(event.phase);
+        if (event.type === "phase_complete") {
           setIsRunning(false);
           es.close();
           esRef.current = null;
-          refreshProject();
+          refreshData();
         }
-        if (event.type === "done") {
-          setPipelineStatus("completed");
-          setCompletedPhases(new Set(PHASE_ORDER));
-          setIsRunning(false);
-          es.close();
-          esRef.current = null;
-          refreshProject();
+        if (event.type === "phase_start") {
+          // Refresh workflow to show running state
+          if (id) getWorkflow(id).then(setWorkflow);
         }
         if (event.type === "error") {
           setIsRunning(false);
-          setPipelineStatus("paused");
           setError(event.message || "Pipeline 执行失败");
           es.close();
           esRef.current = null;
-          refreshProject();
+          refreshData();
         }
       });
       esRef.current = es;
     } catch (err: any) {
       setIsRunning(false);
       setError(err.message || "启动失败");
-      refreshProject();
+      refreshData();
     }
   };
 
@@ -146,9 +119,36 @@ export default function ProjectDetail() {
     unknown: "bg-gray-500",
   };
 
+  const pipelineStatus = detail.pipeline_status;
+
+  // Determine which detail panel to show based on selected node
+  const selectedPhase = selectedNode
+    ? selectedNode.split(":")[0]
+    : null;
+  const selectedEpisode = selectedNode?.includes(":ep")
+    ? parseInt(selectedNode.split(":ep")[1])
+    : null;
+
+  // Filter data for selected episode
+  const filteredStoryboard =
+    selectedEpisode && detail.storyboard
+      ? detail.storyboard.filter((s) => s.episode_number === selectedEpisode)
+      : detail.storyboard;
+
+  const filteredImages =
+    selectedEpisode && detail.images
+      ? detail.images.filter((s) => s.episode_number === selectedEpisode)
+      : detail.images;
+
+  const filteredVideos =
+    selectedEpisode && detail.videos
+      ? detail.videos.filter((s) => s.episode_number === selectedEpisode)
+      : detail.videos;
+
   return (
     <div>
-      <div className="flex items-center gap-3 mb-6">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-4">
         <h2 className="text-xl font-bold">{detail.project.name}</h2>
         <span
           className={`text-xs px-2 py-0.5 rounded text-white ${statusColor[pipelineStatus] || "bg-gray-500"}`}
@@ -156,70 +156,105 @@ export default function ProjectDetail() {
           {statusLabel[pipelineStatus] || pipelineStatus}
         </span>
         <span className="text-sm text-gray-500">
-          {detail.project.style} · {detail.project.episode_count} 集
+          {detail.project.style} · {detail.project.episode_count} 集 ·{" "}
+          {detail.project.prompt_language === "zh" ? "中文提示词" : "English prompts"}
         </span>
       </div>
 
-      <PipelineProgress
-        currentPhase={currentPhase}
-        status={pipelineStatus}
-        completedPhases={completedPhases}
-        nextPhase={nextPhase}
-        episodeCount={detail.project.episode_count}
-        onRunPhase={handleRunPhase}
-        isRunning={isRunning}
-      />
-
+      {/* Error banner */}
       {error && (
         <div className="text-red-400 text-sm mb-4 bg-red-900/20 border border-red-800 rounded-lg p-3">
           {error}
         </div>
       )}
 
-      {detail.blueprint && (
-        <div className="mb-6">
-          <h3 className="text-lg font-bold mb-3">剧本蓝图</h3>
-          <BlueprintView blueprint={detail.blueprint} />
-        </div>
-      )}
-
-      {detail.assets && detail.assets.length > 0 && (
-        <div className="mb-6">
-          <h3 className="text-lg font-bold mb-3">角色资产</h3>
-          <CharacterAssetView assets={detail.assets} />
-        </div>
-      )}
-
-      {detail.storyboard && detail.storyboard.length > 0 && (
-        <div className="mb-6">
-          <h3 className="text-lg font-bold mb-3">分镜</h3>
-          <StoryboardView storyboard={detail.storyboard} />
-        </div>
-      )}
-
-      {detail.images && detail.images.length > 0 && (
-        <div className="mb-6">
-          <h3 className="text-lg font-bold mb-3">图片/视频</h3>
-          <ShotGallery
-            images={detail.images}
-            videos={detail.videos || []}
+      {/* Workflow Graph — full-bleed, fills viewport */}
+      {workflow && (
+        <div
+          style={{
+            height: "calc(100vh - 120px)",
+            width: "100vw",
+            marginLeft: "calc(-50vw + 50%)",
+          }}
+        >
+          <WorkflowGraph
+            workflowNodes={workflow.nodes}
+            workflowEdges={workflow.edges}
+            projectStyle={detail.project.style}
+            episodeCount={detail.project.episode_count}
+            promptLanguage={detail.project.prompt_language || "en"}
+            selectedNode={selectedNode}
+            onRunNode={handleRunNode}
+            onSelectNode={setSelectedNode}
           />
         </div>
       )}
 
-      {pipelineStatus === "paused" &&
-        !detail.blueprint &&
-        (!detail.storyboard || detail.storyboard.length === 0) &&
-        (!detail.images || detail.images.length === 0) && (
-          <div className="text-center py-12 text-gray-500">
-            点击上方"运行"按钮开始第一个阶段
+      {/* Selected node info bar */}
+      {selectedNode && (
+        <div className="flex items-center gap-3 mb-4 bg-gray-800 rounded-lg px-4 py-2">
+          <span className="text-sm text-gray-400">选中节点:</span>
+          <span className="text-sm text-white font-medium">{selectedNode}</span>
+          <button
+            onClick={() => setSelectedNode(null)}
+            className="text-xs text-gray-500 hover:text-gray-300 ml-auto"
+          >
+            清除选择
+          </button>
+        </div>
+      )}
+
+      {/* Detail Panel */}
+      {(selectedPhase === "story_understanding" || !selectedNode) &&
+        detail.blueprint && (
+          <div className="mb-6">
+            <h3 className="text-lg font-bold mb-3">剧本蓝图</h3>
+            <BlueprintView blueprint={detail.blueprint} />
           </div>
         )}
 
-      {pipelineStatus === "completed" &&
+      {(selectedPhase === "character_asset" || !selectedNode) &&
+        detail.assets &&
+        detail.assets.length > 0 && (
+          <div className="mb-6">
+            <h3 className="text-lg font-bold mb-3">角色资产</h3>
+            <CharacterAssetView assets={detail.assets} />
+          </div>
+        )}
+
+      {(selectedPhase === "storyboard" || !selectedNode) &&
+        filteredStoryboard &&
+        filteredStoryboard.length > 0 && (
+          <div className="mb-6">
+            <h3 className="text-lg font-bold mb-3">
+              分镜{selectedEpisode ? ` (EP${selectedEpisode})` : ""}
+            </h3>
+            <StoryboardView storyboard={filteredStoryboard} />
+          </div>
+        )}
+
+      {(selectedPhase === "image_generation" ||
+        selectedPhase === "video_generation" ||
+        !selectedNode) &&
+        filteredImages &&
+        filteredImages.length > 0 && (
+          <div className="mb-6">
+            <h3 className="text-lg font-bold mb-3">
+              图片/视频{selectedEpisode ? ` (EP${selectedEpisode})` : ""}
+            </h3>
+            <ShotGallery
+              images={filteredImages}
+              videos={filteredVideos || []}
+            />
+          </div>
+        )}
+
+      {/* Empty state */}
+      {!detail.blueprint &&
+        (!detail.storyboard || detail.storyboard.length === 0) &&
         (!detail.images || detail.images.length === 0) && (
           <div className="text-center py-12 text-gray-500">
-            Pipeline 已完成
+            点击工作流图中的节点开始运行
           </div>
         )}
     </div>

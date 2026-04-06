@@ -16,6 +16,7 @@ import (
 type SSEEvent struct {
 	Type    string `json:"type"`
 	Phase   string `json:"phase,omitempty"`
+	Node    string `json:"node,omitempty"`
 	Message string `json:"message,omitempty"`
 }
 
@@ -51,6 +52,7 @@ func NewServer(agents map[agent.Phase]agent.Agent, st store.Store, outputDir str
 	r.Get("/api/projects", s.handleListProjects)
 	r.Get("/api/projects/{id}", s.handleGetProject)
 	r.Post("/api/projects/{id}/run-phase", s.handleRunPhase)
+	r.Get("/api/projects/{id}/workflow", s.handleGetWorkflow)
 	r.Get("/api/projects/{id}/events", s.handleSSE)
 
 	// Serve generated files

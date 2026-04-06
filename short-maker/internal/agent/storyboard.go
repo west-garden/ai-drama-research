@@ -50,7 +50,7 @@ func (a *StoryboardAgent) Run(ctx context.Context, state *PipelineState) (*Pipel
 			}
 
 			// Phase 2: LLM -- select strategy + generate shot details
-			shots, err := a.generateShotsForScene(ctx, ep, scene, candidates, prevShots, state)
+			shots, err := a.generateShotsForScene(ctx, ep, scene, candidates, prevShots, state, state.Project.PromptLanguage)
 			if err != nil {
 				return nil, fmt.Errorf("generate shots for ep%d scene '%s': %w", ep.Number, scene.NarrativeBeat, err)
 			}
@@ -92,8 +92,9 @@ func (a *StoryboardAgent) generateShotsForScene(
 	candidates []strategy.ScoredStrategy,
 	prevShots []string,
 	state *PipelineState,
+	promptLanguage string,
 ) ([]storyboardShotResponse, error) {
-	systemPrompt := buildStoryboardSystemPrompt()
+	systemPrompt := buildStoryboardSystemPrompt(promptLanguage)
 	userPrompt := buildStoryboardUserPrompt(ep, scene, candidates, prevShots, state)
 
 	resp, err := a.llmClient.Chat(ctx, llm.Request{
@@ -118,8 +119,8 @@ func (a *StoryboardAgent) generateShotsForScene(
 
 // --- Prompt builders ---
 
-func buildStoryboardSystemPrompt() string {
-	return `You are a storyboard generation agent for an AI short drama production system.
+func buildStoryboardSystemPrompt(promptLanguage string) string {
+	base := `You are a storyboard generation agent for an AI short drama production system.
 Given a scene description and candidate shot strategies, generate structured shot specifications.
 
 For each shot, select the most appropriate strategy and customize it for the scene context.
@@ -133,7 +134,7 @@ Output ONLY valid JSON with this schema:
       "frame_type": "close_up|medium|wide|extreme_wide",
       "composition": "description of shot composition",
       "camera_move": "static|pan|zoom_in|zoom_out|tracking",
-      "emotion": "emotional tone of the shot in Chinese",
+      "emotion": "emotional tone of the shot",
       "prompt": "detailed visual description for image generation — include art style, specific visual elements, lighting, atmosphere",
       "character_names": ["character names visible in this shot"],
       "scene_ref": "scene or setting name",
@@ -156,6 +157,17 @@ content_type rules:
 - "empty": scenery, environment, flashback, no characters
 
 Generate 1-3 shots per scene. Each shot should have a distinct purpose in the narrative.`
+
+	if promptLanguage == "zh" {
+		base += `
+
+IMPORTANT language rules:
+- "prompt" field MUST be in English (for AI image generation)
+- "emotion", "composition" fields MUST be in Chinese (中文)
+- "scene_ref" should be in Chinese (中文)`
+	}
+
+	return base
 }
 
 func buildStoryboardUserPrompt(

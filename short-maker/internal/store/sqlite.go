@@ -70,22 +70,61 @@ func (s *SQLiteStore) migrate() error {
 		updated_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 	);
 	`
-	_, err := s.db.Exec(schema)
-	return err
+	if _, err := s.db.Exec(schema); err != nil {
+		return err
+	}
+
+	// Incremental migrations for new columns (safe to re-run)
+	alterStmts := []string{
+		"ALTER TABLE projects ADD COLUMN prompt_language TEXT NOT NULL DEFAULT 'en'",
+		"ALTER TABLE pipeline_runs ADD COLUMN running_node TEXT NOT NULL DEFAULT ''",
+	}
+	for _, stmt := range alterStmts {
+		// Ignore "duplicate column" errors — the column already exists
+		if _, err := s.db.Exec(stmt); err != nil && !isDuplicateColumnErr(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+func isDuplicateColumnErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	// SQLite returns "duplicate column name: ..." for ALTER TABLE ADD COLUMN on existing column
+	return len(msg) > 0 && (contains(msg, "duplicate column") || contains(msg, "already exists"))
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && searchString(s, substr)
+}
+
+func searchString(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *SQLiteStore) SaveProject(ctx context.Context, p *domain.Project) error {
+	if p.PromptLanguage == "" {
+		p.PromptLanguage = "en"
+	}
 	_, err := s.db.ExecContext(ctx,
-		"INSERT OR REPLACE INTO projects (id, name, style, episode_count, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-		p.ID, p.Name, p.Style, p.EpisodeCount, p.Status, p.CreatedAt)
+		"INSERT OR REPLACE INTO projects (id, name, style, episode_count, prompt_language, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		p.ID, p.Name, p.Style, p.EpisodeCount, p.PromptLanguage, p.Status, p.CreatedAt)
 	return err
 }
 
 func (s *SQLiteStore) GetProject(ctx context.Context, id string) (*domain.Project, error) {
 	p := &domain.Project{}
 	err := s.db.QueryRowContext(ctx,
-		"SELECT id, name, style, episode_count, status, created_at FROM projects WHERE id = ?", id).
-		Scan(&p.ID, &p.Name, &p.Style, &p.EpisodeCount, &p.Status, &p.CreatedAt)
+		"SELECT id, name, style, episode_count, prompt_language, status, created_at FROM projects WHERE id = ?", id).
+		Scan(&p.ID, &p.Name, &p.Style, &p.EpisodeCount, &p.PromptLanguage, &p.Status, &p.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("get project %s: %w", id, err)
 	}
@@ -244,7 +283,7 @@ func (s *SQLiteStore) GetPipelineResult(ctx context.Context, projectID string) (
 
 func (s *SQLiteStore) ListProjects(ctx context.Context) ([]*domain.Project, error) {
 	rows, err := s.db.QueryContext(ctx,
-		"SELECT id, name, style, episode_count, status, created_at FROM projects ORDER BY created_at DESC")
+		"SELECT id, name, style, episode_count, prompt_language, status, created_at FROM projects ORDER BY created_at DESC")
 	if err != nil {
 		return nil, err
 	}
@@ -253,7 +292,7 @@ func (s *SQLiteStore) ListProjects(ctx context.Context) ([]*domain.Project, erro
 	var projects []*domain.Project
 	for rows.Next() {
 		p := &domain.Project{}
-		if err := rows.Scan(&p.ID, &p.Name, &p.Style, &p.EpisodeCount, &p.Status, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.Style, &p.EpisodeCount, &p.PromptLanguage, &p.Status, &p.CreatedAt); err != nil {
 			return nil, err
 		}
 		projects = append(projects, p)

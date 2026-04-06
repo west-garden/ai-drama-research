@@ -82,12 +82,19 @@ export interface Asset {
   metadata: Record<string, string>;
 }
 
+export interface NodeStatusEntry {
+  status: "pending" | "running" | "completed" | "failed" | "skipped";
+  error?: string;
+  updated_at: string;
+}
+
 export interface ProjectDetail {
   project: {
     id: string;
     name: string;
     style: string;
     episode_count: number;
+    prompt_language: string;
     status: string;
   };
   pipeline_status: string;
@@ -99,11 +106,13 @@ export interface ProjectDetail {
   images?: GeneratedShot[];
   videos?: GeneratedShot[];
   errors?: string[];
+  node_statuses?: Record<string, NodeStatusEntry>;
 }
 
 export interface SSEEvent {
   type: "phase_start" | "phase_complete" | "done" | "error" | "paused";
   phase?: string;
+  node?: string;
   message?: string;
 }
 
@@ -115,7 +124,32 @@ export interface RunPhaseRequest {
 export interface RunPhaseResponse {
   status: string;
   phase: string;
+  node: string;
 }
+
+// --- Workflow types ---
+
+export interface WorkflowNode {
+  id: string;
+  phase: string;
+  episode: number;
+  status: "pending" | "running" | "completed" | "failed" | "skipped";
+  error?: string;
+  label: string;
+  can_run: boolean;
+}
+
+export interface WorkflowEdge {
+  source: string;
+  target: string;
+}
+
+export interface WorkflowResponse {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+}
+
+// --- API functions ---
 
 export async function createProject(form: FormData): Promise<any> {
   const res = await fetch(`${API_BASE}/projects`, {
@@ -134,6 +168,12 @@ export async function listProjects(): Promise<ProjectSummary[]> {
 
 export async function getProject(id: string): Promise<ProjectDetail> {
   const res = await fetch(`${API_BASE}/projects/${id}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function getWorkflow(id: string): Promise<WorkflowResponse> {
+  const res = await fetch(`${API_BASE}/projects/${id}/workflow`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }

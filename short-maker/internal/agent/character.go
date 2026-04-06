@@ -34,7 +34,7 @@ func (a *CharacterAgent) Run(ctx context.Context, state *PipelineState) (*Pipeli
 	for _, ch := range state.Blueprint.Characters {
 		log.Printf("[character-agent] generating visual description for: %s", ch.Name)
 
-		visual, err := a.generateVisualDescription(ctx, ch, style)
+		visual, err := a.generateVisualDescription(ctx, ch, style, state.Project.PromptLanguage)
 		if err != nil {
 			return nil, fmt.Errorf("generate visual for %s: %w", ch.Name, err)
 		}
@@ -64,8 +64,8 @@ func (a *CharacterAgent) Run(ctx context.Context, state *PipelineState) (*Pipeli
 	return state, nil
 }
 
-func (a *CharacterAgent) generateVisualDescription(ctx context.Context, ch *domain.CharacterProfile, style string) (*characterVisualResponse, error) {
-	systemPrompt := buildCharacterSystemPrompt()
+func (a *CharacterAgent) generateVisualDescription(ctx context.Context, ch *domain.CharacterProfile, style string, promptLanguage string) (*characterVisualResponse, error) {
+	systemPrompt := buildCharacterSystemPrompt(promptLanguage)
 	userPrompt := buildCharacterUserPrompt(ch.Name, ch.Description, ch.Traits, style)
 
 	resp, err := a.llmClient.Chat(ctx, llm.Request{
@@ -88,8 +88,8 @@ func (a *CharacterAgent) generateVisualDescription(ctx context.Context, ch *doma
 	return &visual, nil
 }
 
-func buildCharacterSystemPrompt() string {
-	return `You are a character design agent for an AI short drama production system.
+func buildCharacterSystemPrompt(promptLanguage string) string {
+	base := `You are a character design agent for an AI short drama production system.
 Generate a detailed visual description suitable for AI image generation.
 
 Output ONLY valid JSON with this exact schema (no other text):
@@ -108,6 +108,17 @@ Requirements:
 - Include the art style (manga, 3D, live-action) in the visual_prompt
 - Focus on visually distinctive features that maintain character consistency
 - Descriptions should be specific enough for AI image generation`
+
+	if promptLanguage == "zh" {
+		base += `
+
+IMPORTANT language rules:
+- "visual_prompt" MUST be in English (for AI image generation)
+- "face", "body", "clothing" fields MUST be in Chinese (中文)
+- "distinctive_features" array values MUST be in Chinese (中文)`
+	}
+
+	return base
 }
 
 func buildCharacterUserPrompt(name, description string, traits []string, style string) string {

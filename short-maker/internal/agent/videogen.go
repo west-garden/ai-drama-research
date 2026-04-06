@@ -49,7 +49,10 @@ func (a *VideoGenAgent) Run(ctx context.Context, state *PipelineState) (*Pipelin
 
 		outPath := shotVideoPath(a.outputDir, state.Project.ID, img.EpisodeNum, img.ShotNumber)
 		if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {
-			return nil, fmt.Errorf("create output dir: %w", err)
+			errMsg := fmt.Sprintf("create output dir for video shot %d: %v", img.ShotNumber, err)
+			log.Printf("[video-gen] %s", errMsg)
+			state.Errors = append(state.Errors, errMsg)
+			continue
 		}
 
 		srcImagePath := shotImagePath(a.outputDir, state.Project.ID, img.EpisodeNum, img.ShotNumber)
@@ -62,6 +65,7 @@ func (a *VideoGenAgent) Run(ctx context.Context, state *PipelineState) (*Pipelin
 		}
 
 		var lastReport *quality.QualityReport
+		shotFailed := false
 		for attempt := 0; attempt <= maxRetries; attempt++ {
 			resp, err := a.router.Generate(ctx, grade, string(state.Project.Style), router.ModelTypeVideo, req)
 			if err != nil {
@@ -69,12 +73,20 @@ func (a *VideoGenAgent) Run(ctx context.Context, state *PipelineState) (*Pipelin
 					log.Printf("[video-gen] shot %d generate failed, retrying (%d/%d): %v", img.ShotNumber, attempt+1, maxRetries, err)
 					continue
 				}
-				return nil, fmt.Errorf("generate video for shot %d: %w", img.ShotNumber, err)
+				errMsg := fmt.Sprintf("generate video for ep%d shot %d failed after %d attempts: %v", img.EpisodeNum, img.ShotNumber, maxRetries+1, err)
+				log.Printf("[video-gen] %s", errMsg)
+				state.Errors = append(state.Errors, errMsg)
+				shotFailed = true
+				break
 			}
 
 			report, err := a.checker.Check(ctx, resp.FilePath, shotSpec, charAssets)
 			if err != nil {
-				return nil, fmt.Errorf("quality check video shot %d: %w", img.ShotNumber, err)
+				errMsg := fmt.Sprintf("quality check video ep%d shot %d: %v", img.EpisodeNum, img.ShotNumber, err)
+				log.Printf("[video-gen] %s", errMsg)
+				state.Errors = append(state.Errors, errMsg)
+				shotFailed = true
+				break
 			}
 			lastReport = report
 
@@ -87,6 +99,10 @@ func (a *VideoGenAgent) Run(ctx context.Context, state *PipelineState) (*Pipelin
 				log.Printf("[video-gen] shot %d failed quality check (score: %d), retrying (%d/%d)",
 					img.ShotNumber, report.TotalScore, attempt+1, maxRetries)
 			}
+		}
+
+		if shotFailed {
+			continue
 		}
 
 		score := 0
@@ -105,7 +121,7 @@ func (a *VideoGenAgent) Run(ctx context.Context, state *PipelineState) (*Pipelin
 		})
 	}
 
-	log.Printf("[video-gen] generated %d videos", len(state.Videos))
+	log.Printf("[video-gen] generated %d videos (%d errors)", len(state.Videos), len(state.Errors))
 	return state, nil
 }
 
